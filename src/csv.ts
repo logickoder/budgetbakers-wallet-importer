@@ -18,7 +18,7 @@
  * | `date`     | yes      | `YYYY-MM-DD HH:MM:SS` — treated as UTC             |
  * | `account`  | yes      | Exact account name as it appears in the app        |
  * | `amount`   | yes      | Signed float. Negative = expense, positive = income|
- * | `category` | yes      | Exact category name as it appears in the app       |
+ * | `category` | yes      | Exact app category name, except transfer aliases   |
  * | `note`     | no       | Free text                                          |
  * | `payee`    | no       | Stored as a separate field, not embedded in note   |
  *
@@ -44,34 +44,48 @@ import type { LookupMaps, NewRecord } from "./types.js";
 
 /** Raw row shape after csv-parse with `columns: true`. */
 export interface CsvRow {
-  date:     string;
-  account:  string;
-  amount:   string;
+  date: string;
+  account: string;
+  amount: string;
   category: string;
-  note:     string;
-  payee:    string;
+  note: string;
+  payee: string;
 }
 
 /** A row that could not be converted, with a reason. */
 export interface SkippedRow {
-  row:    CsvRow;
+  row: CsvRow;
   reason: string;
 }
 
 /** Result from `convertRows`. */
 export interface ParseResult {
-  records:     NewRecord[];
+  records: NewRecord[];
   /**
    * The original CSV row for each record, in the same order.
    * `originalRows[i]` is the source row for `records[i]`.
    * Used by cli.ts to write `_success.csv` and `_failure.csv`.
    */
   originalRows: CsvRow[];
-  skipped:     SkippedRow[];
+  skipped: SkippedRow[];
 }
 
 /** The header for our custom CSV format. */
 export const CSV_HEADER = ["date", "account", "amount", "category", "note", "payee"] as const;
+
+/**
+ * Transfer rows are a special case: we accept common aliases and map them
+ * to the runtime "Transfer, withdraw" category id when available.
+ */
+function isTransferCategoryAlias(category: string): boolean {
+  const normalized = category
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z]+/g, " ")
+    .trim();
+
+  return normalized === "transfer" || normalized === "transfer withdraw";
+}
 
 /**
  * Parses the custom importer CSV string into raw row objects.
@@ -79,9 +93,9 @@ export const CSV_HEADER = ["date", "account", "amount", "category", "note", "pay
  */
 export function parseCsv(content: string): CsvRow[] {
   return parse(content.replace(/^\uFEFF/, ""), {
-    columns:            true,
-    skip_empty_lines:   true,
-    trim:               true,
+    columns: true,
+    skip_empty_lines: true,
+    trim: true,
     relax_column_count: true,
   }) as CsvRow[];
 }
@@ -138,9 +152,9 @@ export function skippedRowsToCsv(skipped: SkippedRow[]): string {
  * to write success/failure output CSVs after the CouchDB write completes.
  */
 export function convertRows(rows: CsvRow[], maps: LookupMaps): ParseResult {
-  const records:     NewRecord[] = [];
-  const originalRows: CsvRow[]  = [];
-  const skipped:     SkippedRow[] = [];
+  const records: NewRecord[] = [];
+  const originalRows: CsvRow[] = [];
+  const skipped: SkippedRow[] = [];
 
   // Track pending transfer legs. Key: date string. Value: index into `records`.
   const pendingTransfers = new Map<string, number>();
@@ -149,9 +163,15 @@ export function convertRows(rows: CsvRow[], maps: LookupMaps): ParseResult {
     if (!row.date?.trim() || !row.account?.trim()) continue;
 
     // ── Resolve CouchDB ids ─────────────────────────────────────────────────
-    const accountId  = maps.accounts[row.account];
+    const accountId = maps.accounts[row.account];
     const currencyId = maps.accountCurrencies[row.account];
-    const categoryId = maps.categories[row.category];
+
+    const rawCategory = row.category?.trim() || "";
+    let categoryId = maps.categories[rawCategory];
+
+    if (!categoryId && maps.transferCategoryId !== null && isTransferCategoryAlias(rawCategory)) {
+      categoryId = maps.transferCategoryId;
+    }
 
     if (!accountId) {
       skipped.push({ row, reason: `Unknown account: "${row.account}"` });
@@ -175,7 +195,7 @@ export function convertRows(rows: CsvRow[], maps: LookupMaps): ParseResult {
     const amount = Math.round(Math.abs(rawAmount) * 100);
 
     // ── Derived fields ──────────────────────────────────────────────────────
-    const type       = rawAmount < 0 ? RECORD_TYPE.EXPENSE : RECORD_TYPE.INCOME;
+    const type = rawAmount < 0 ? RECORD_TYPE.EXPENSE : RECORD_TYPE.INCOME;
     const recordDate = toIso(row.date);
 
     const isTransfer = maps.transferCategoryId !== null
@@ -189,11 +209,11 @@ export function convertRows(rows: CsvRow[], maps: LookupMaps): ParseResult {
       categoryId,
       amount,
       type,
-      note:        row.note?.trim()  || "",
-      payee:       row.payee?.trim() || undefined,
+      note: row.note?.trim() || "",
+      payee: row.payee?.trim() || undefined,
       recordDate,
       paymentType,
-      transfer:    isTransfer,
+      transfer: isTransfer,
     };
 
     // ── Transfer pair linking ───────────────────────────────────────────────
@@ -205,11 +225,11 @@ export function convertRows(rows: CsvRow[], maps: LookupMaps): ParseResult {
         const sharedTransferId = crypto.randomUUID();
         const firstLeg = records[pairIdx];
 
-        firstLeg.transferId        = sharedTransferId;
+        firstLeg.transferId = sharedTransferId;
         firstLeg.transferAccountId = accountId;
 
-        record.transferId          = sharedTransferId;
-        record.transferAccountId   = firstLeg.accountId;
+        record.transferId = sharedTransferId;
+        record.transferAccountId = firstLeg.accountId;
 
         pendingTransfers.delete(pairKey);
       } else {
@@ -227,7 +247,7 @@ export function convertRows(rows: CsvRow[], maps: LookupMaps): ParseResult {
   for (const idx of orphanIndices) {
     const orphanRow = originalRows[idx];
     skipped.push({
-      row:    orphanRow,
+      row: orphanRow,
       reason: `Transfer row at "${orphanRow.date}" has no matching pair — both legs must have the same date`,
     });
     records.splice(idx, 1);

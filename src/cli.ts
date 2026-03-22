@@ -38,11 +38,12 @@ import fs from "fs";
 import path from "path";
 import readline from "readline";
 import { login } from "./auth.js";
-import { buildCouchClient, buildLookupMaps } from "./couch.js";
+import { buildCouchClient, buildLookupMapsFromData, fetchLookupData } from "./couch.js";
 import { writeRecords } from "./records.js";
 import type { CsvRow, SkippedRow } from "./csv.js";
 import { convertRows, parseCsv, rowsToCsv, skippedRowsToCsv } from "./csv.js";
 import { createLogger } from "./logger.js";
+import { writeLookupDumpFiles } from "./utils.js";
 
 const SESSION_FILE = ".budgetbakers-session";
 
@@ -158,7 +159,25 @@ async function main() {
   // ── Step 3: Fetch lookup maps ───────────────────────────────────────────────
   console.log("Fetching accounts, categories and currencies from CouchDB...");
   const couch = buildCouchClient(loginResult.replication);
-  const maps = await buildLookupMaps(couch);
+  const lookupData = await fetchLookupData(couch);
+  const maps = buildLookupMapsFromData(lookupData);
+
+  if (options.debug) {
+    try {
+      const dump = writeLookupDumpFiles(lookupData, maps, loginResult.userId);
+      console.log(`Debug lookup dumps → ${dump.dir}`);
+      debug("Lookup debug dumps written", { dump });
+    } catch (error) {
+      console.error(
+        "Warning: failed to write debug lookup dumps:",
+        error instanceof Error ? error.message : String(error)
+      );
+      debug("Lookup debug dumps failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   debug("Lookup maps loaded", {
     accounts: Object.keys(maps.accounts).length,
     categories: Object.keys(maps.categories).length,
@@ -175,7 +194,7 @@ async function main() {
   console.log("Expected CSV format:");
   console.log("  date,account,amount,category,note,payee");
   console.log("  2026-01-27 02:31:00,First Bank,-53.75,Charges & Fees,Stamp Duty,");
-  console.log("  (account & category names must match exactly what you see in the app)\n");
+  console.log("  (account names must match exactly; category is exact except transfer aliases like TRANSFER)\n");
 
   const csvPath = await ask("Path to CSV file: ");
   const resolved = path.resolve(csvPath);

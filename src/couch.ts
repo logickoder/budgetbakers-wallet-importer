@@ -23,6 +23,7 @@ import type {
   AccountDoc,
   CategoryDoc,
   CurrencyDoc,
+  LookupData,
   LookupMaps,
   ReplicationConfig,
 } from "./types.js";
@@ -36,11 +37,11 @@ export function buildCouchClient(rep: ReplicationConfig): AxiosInstance {
   return axios.create({
     baseURL: `${rep.url}/${rep.dbName}`,
     headers: {
-      Authorization:  `Basic ${credentials}`,
+      Authorization: `Basic ${credentials}`,
       "Content-Type": "application/json",
-      Accept:         "application/json",
-      Origin:         WEB_ORIGIN,
-      Referer:        `${WEB_ORIGIN}/`,
+      Accept: "application/json",
+      Origin: WEB_ORIGIN,
+      Referer: `${WEB_ORIGIN}/`,
     },
   });
 }
@@ -89,6 +90,19 @@ export async function fetchCurrencies(couch: AxiosInstance): Promise<CurrencyDoc
 }
 
 /**
+ * Fetches the raw lookup documents needed by the importer in one batch.
+ */
+export async function fetchLookupData(couch: AxiosInstance): Promise<LookupData> {
+  const [accounts, categories, currencies] = await Promise.all([
+    fetchAccounts(couch),
+    fetchCategories(couch),
+    fetchCurrencies(couch),
+  ]);
+
+  return { accounts, categories, currencies };
+}
+
+/**
  * Fetches accounts, categories, and currencies in parallel and returns
  * runtime lookup maps.
  *
@@ -111,25 +125,21 @@ export async function fetchCurrencies(couch: AxiosInstance): Promise<CurrencyDoc
  * maps.categories["Charges, Fees"]     // "-Category_8013274a-..."
  * maps.transferCategoryId              // "-Category_16b2df8a-..."
  */
-export async function buildLookupMaps(couch: AxiosInstance): Promise<LookupMaps> {
-  const [accounts, categories, currencies] = await Promise.all([
-    fetchAccounts(couch),
-    fetchCategories(couch),
-    fetchCurrencies(couch),
-  ]);
+export function buildLookupMapsFromData(data: LookupData): LookupMaps {
+  const { accounts, categories, currencies } = data;
 
   // currency id → ISO code, for resolving account currencies
   const currencyById: Record<string, string> = {};
-  const currencyMap:  Record<string, string> = {};
+  const currencyMap: Record<string, string> = {};
   for (const c of currencies) {
-    currencyById[c._id]  = c._id;  // id → id (used below)
-    currencyMap[c.code]  = c._id;  // "NGN" → "-Currency_..."
+    currencyById[c._id] = c._id;  // id → id (used below)
+    currencyMap[c.code] = c._id;  // "NGN" → "-Currency_..."
   }
 
-  const accountMap:          Record<string, string> = {};
-  const accountCurrencyMap:  Record<string, string> = {};
+  const accountMap: Record<string, string> = {};
+  const accountCurrencyMap: Record<string, string> = {};
   for (const a of accounts) {
-    accountMap[a.name]         = a._id;          // full "-Account_<uuid>"
+    accountMap[a.name] = a._id;          // full "-Account_<uuid>"
     accountCurrencyMap[a.name] = a.currencyId;   // already a full "-Currency_<uuid>"
   }
 
@@ -142,10 +152,18 @@ export async function buildLookupMaps(couch: AxiosInstance): Promise<LookupMaps>
   const transferCategoryId = categoryMap["Transfer, withdraw"] ?? null;
 
   return {
-    accounts:          accountMap,
+    accounts: accountMap,
     accountCurrencies: accountCurrencyMap,
-    categories:        categoryMap,
-    currencies:        currencyMap,
+    categories: categoryMap,
+    currencies: currencyMap,
     transferCategoryId,
   };
+}
+
+/**
+ * Convenience wrapper used by existing callers that only need maps.
+ */
+export async function buildLookupMaps(couch: AxiosInstance): Promise<LookupMaps> {
+  const data = await fetchLookupData(couch);
+  return buildLookupMapsFromData(data);
 }

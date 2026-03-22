@@ -10,7 +10,7 @@ import pipeline to preserve full timestamps and support multiple accounts in a s
 The official Wallet app import has two hard limitations:
 
 | Limitation                       | Impact                                                               |
-|----------------------------------|----------------------------------------------------------------------|
+| -------------------------------- | -------------------------------------------------------------------- |
 | Date format is `yyyy-MM-dd` only | Time of day is always stripped — every transaction lands at midnight |
 | One account per import file      | Multi-account bank statements require splitting and multiple imports |
 
@@ -50,6 +50,16 @@ npm start -- --no-debug
 
 You can also pass `--debug` explicitly.
 
+When debug is enabled, the importer writes CouchDB lookup dumps to:
+
+`./debug/couch-lookups-<timestamp>/`
+
+- `metadata.json`
+- `accounts.json`
+- `categories.json`
+- `currencies.json`
+- `maps.json`
+
 The tool will ask for:
 
 1. **Your email address** — used to send an SSO login link on the first run
@@ -85,7 +95,7 @@ date,account,amount,category,note,payee
 ### Column reference
 
 | Column     | Required | Format                | Notes                                                |
-|------------|----------|-----------------------|------------------------------------------------------|
+| ---------- | -------- | --------------------- | ---------------------------------------------------- |
 | `date`     | yes      | `YYYY-MM-DD HH:MM:SS` | Treated as UTC                                       |
 | `account`  | yes      | text                  | Must match the account name in the app exactly       |
 | `amount`   | yes      | signed number         | Negative = expense, positive = income                |
@@ -96,7 +106,7 @@ date,account,amount,category,note,payee
 ### What you don't need to fill in
 
 | Field            | How it's determined                                      |
-|------------------|----------------------------------------------------------|
+| ---------------- | -------------------------------------------------------- |
 | Currency         | Taken from the account's own currency — no column needed |
 | Income / expense | Sign of `amount`                                         |
 | Transfer flag    | Detected automatically — see Transfers below             |
@@ -122,7 +132,7 @@ leg, it is moved to the failure file with an explanation.
 After each run, two files are written alongside your input CSV:
 
 | File                 | Contents                                            |
-|----------------------|-----------------------------------------------------|
+| -------------------- | --------------------------------------------------- |
 | `<name>_success.csv` | Rows that were written to BudgetBakers successfully |
 | `<name>_failure.csv` | Rows that failed, with an extra `reason` column     |
 
@@ -175,7 +185,8 @@ Failure CSV → ~/transactions_failure.csv
 The account name in your CSV does not match the app exactly. Open the app, check the account name, and update your CSV.
 
 **`Unknown category: "Food" — check app for exact name`**
-Same as above for categories. Category names are case-sensitive and must match character for character.
+Same as above for categories. Category names are case-sensitive and must match character for character, except
+transfer aliases like `TRANSFER` and `Transfer` which are mapped to the app's transfer category.
 
 **`Transfer row has no matching pair`**
 A row with the transfer category has no corresponding second row with the same timestamp. Check that both legs have the
