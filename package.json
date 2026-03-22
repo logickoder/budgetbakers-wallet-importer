@@ -1,0 +1,27 @@
+{
+  "name": "budgetbakers-importer",
+  "version": "1.0.0",
+  "description": "Direct CouchDB importer for BudgetBakers / Wallet app CSV exports",
+  "type": "module",
+  "scripts": {
+    "start": "ts-node --esm src/cli.ts",
+    "build": "tsc",
+    "run:built": "node dist/cli.js"
+  },
+  "dependencies": {
+    "axios": "^1.13.6",
+    "axios-cookiejar-support": "^5.0.5",
+    "csv-parse": "^5.6.0",
+    "csv-stringify": "^6.7.0",
+    "qs": "^6.15.0",
+    "tough-cookie": "^4.1.4",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.37",
+    "@types/qs": "^6.15.0",
+    "@types/uuid": "^9.0.8",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}

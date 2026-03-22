@@ -1,0 +1,232 @@
+#!/usr/bin/env node
+/**
+ * @file cli.ts
+ * @description Interactive terminal importer for BudgetBakers.
+ *
+ * Usage:
+ *   npx ts-node src/cli.ts
+ *   # or after build:
+ *   node dist/cli.js
+ *
+ * Flow:
+ *   1.  Ask for email
+ *   2.  Reuse saved session token if available, otherwise trigger SSO email
+ *   3.  Fetch accounts, categories, currencies from CouchDB
+ *   4.  Ask for CSV file path
+ *   5.  Parse and convert rows
+ *   6.  Show a pre-flight summary (ready / skipped counts + reasons)
+ *   7.  Ask for confirmation
+ *   8.  Write records in one _bulk_docs call
+ *   9.  Split results into success and failure
+ *   10. Write <name>_success.csv and <name>_failure.csv alongside the input
+ *   11. Print final counts
+ *
+ * Session token is saved to `.budgetbakers-session` in the current directory.
+ *
+ * Output files:
+ *   <input>_success.csv  — rows that were written to BudgetBakers successfully
+ *   <input>_failure.csv  — rows that were skipped (bad data) or rejected by
+ *                          CouchDB, with a `reason` column explaining each
+ */
+
+import fs from "fs";
+import path from "path";
+import readline from "readline";
+import { login } from "./auth.ts";
+import { buildCouchClient, buildLookupMaps } from "./couch.js";
+import { writeRecords } from "./records.js";
+import { parseCsv, convertRows, rowsToCsv, skippedRowsToCsv } from "./csv.js";
+import type { CsvRow, SkippedRow } from "./csv.js";
+
+const SESSION_FILE = ".budgetbakers-session";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function ask(question: string): Promise<string> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+}
+
+function loadSession(): string | null {
+  try {
+    return fs.existsSync(SESSION_FILE)
+      ? fs.readFileSync(SESSION_FILE, "utf8").trim()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(token: string): void {
+  fs.writeFileSync(SESSION_FILE, token, "utf8");
+}
+
+/**
+ * Derives output file paths from the input CSV path.
+ *
+ * Input:  /path/to/transactions.csv
+ * Output: /path/to/transactions_success.csv
+ *         /path/to/transactions_failure.csv
+ */
+function outputPaths(inputPath: string): { success: string; failure: string } {
+  const dir = path.dirname(inputPath);
+  const ext = path.extname(inputPath);
+  const base = path.basename(inputPath, ext);
+  return {
+    success: path.join(dir, `${base}_success${ext}`),
+    failure: path.join(dir, `${base}_failure${ext}`),
+  };
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
+async function main() {
+  console.log("\n── BudgetBakers CSV Importer ──\n");
+
+  // ── Step 1: Email ───────────────────────────────────────────────────────────
+  const email = await ask("Email address: ");
+  if (!email) { console.error("Email is required."); process.exit(1); }
+
+  // ── Step 2: Auth ────────────────────────────────────────────────────────────
+  const savedToken = loadSession();
+  if (savedToken) console.log("Found saved session — skipping SSO.\n");
+
+  let loginResult;
+  try {
+    loginResult = await login(email, savedToken);
+  } catch {
+    // Session may be stale — clear it and retry with a fresh SSO flow.
+    if (savedToken) {
+      console.log("Session expired — starting fresh SSO flow.\n");
+      fs.unlinkSync(SESSION_FILE);
+      loginResult = await login(email, null);
+    } else {
+      throw new Error("Login failed");
+    }
+  }
+
+  saveSession(loginResult.sessionToken);
+  console.log(`\nLogged in as ${email}\n`);
+
+  // ── Step 3: Fetch lookup maps ───────────────────────────────────────────────
+  console.log("Fetching accounts, categories and currencies from CouchDB...");
+  const couch = buildCouchClient(loginResult.replication);
+  const maps = await buildLookupMaps(couch);
+
+  console.log(
+    `  ${Object.keys(maps.accounts).length} accounts  ·  ` +
+    `${Object.keys(maps.categories).length} categories  ·  ` +
+    `${Object.keys(maps.currencies).length} currencies\n`
+  );
+
+  // ── Step 4: CSV path ────────────────────────────────────────────────────────
+  console.log("Expected CSV format:");
+  console.log("  date,account,amount,category,note,payee");
+  console.log("  2026-01-27 02:31:00,First Bank,-53.75,Charges & Fees,Stamp Duty,");
+  console.log("  (account & category names must match exactly what you see in the app)\n");
+
+  const csvPath = await ask("Path to CSV file: ");
+  const resolved = path.resolve(csvPath);
+
+  if (!fs.existsSync(resolved)) {
+    console.error(`File not found: ${resolved}`);
+    process.exit(1);
+  }
+
+  const { success: successPath, failure: failurePath } = outputPaths(resolved);
+
+  // ── Step 5: Parse and convert ───────────────────────────────────────────────
+  console.log("\nParsing CSV...");
+  const raw = fs.readFileSync(resolved, "utf8");
+  const rows = parseCsv(raw);
+  const { records, originalRows, skipped } = convertRows(rows, maps);
+
+  // ── Step 6: Pre-flight summary ──────────────────────────────────────────────
+  const dataRowCount = rows.filter(r => r.date?.trim()).length;
+
+  console.log(`\n  Total rows:         ${dataRowCount}`);
+  console.log(`  Ready to import:    ${records.length}`);
+  console.log(`  Skipped (bad data): ${skipped.length}`);
+
+  if (skipped.length > 0) {
+    // Group by reason for a compact display.
+    const byReason = new Map<string, number>();
+    for (const { reason } of skipped) {
+      byReason.set(reason, (byReason.get(reason) ?? 0) + 1);
+    }
+    console.log("\n  Skipped reasons:");
+    for (const [reason, count] of byReason) {
+      console.log(`    [${count}×] ${reason}`);
+    }
+  }
+
+  if (records.length === 0) {
+    console.log("\nNothing to import.");
+    // Still write failure CSV for any skipped rows.
+    if (skipped.length > 0) {
+      fs.writeFileSync(failurePath, skippedRowsToCsv(skipped), "utf8");
+      console.log(`Failure CSV written → ${failurePath}`);
+    }
+    process.exit(0);
+  }
+
+  // ── Step 7: Confirm ─────────────────────────────────────────────────────────
+  console.log();
+  const confirm = await ask(`Write ${records.length} records to BudgetBakers? [y/N] `);
+  if (confirm.toLowerCase() !== "y") {
+    console.log("Aborted.");
+    process.exit(0);
+  }
+
+  // ── Step 8: Write to CouchDB ────────────────────────────────────────────────
+  console.log("\nWriting records...");
+  const results = await writeRecords(couch, loginResult.userId, records);
+
+  // ── Step 9: Split into success and failure ──────────────────────────────────
+  const successRows: CsvRow[] = [];
+  const writeFailures: SkippedRow[] = [];
+
+  for (let i = 0; i < results.length; i++) {
+    if (results[i].ok) {
+      successRows.push(originalRows[i]);
+    } else {
+      writeFailures.push({
+        row: originalRows[i],
+        reason: `CouchDB rejected: ${results[i].error} — ${results[i].reason}`,
+      });
+    }
+  }
+
+  // All failure rows = pre-write skips + CouchDB rejections.
+  const allFailures: SkippedRow[] = [...skipped, ...writeFailures];
+
+  // ── Step 10: Write output CSVs ──────────────────────────────────────────────
+  fs.writeFileSync(successPath, rowsToCsv(successRows), "utf8");
+  fs.writeFileSync(failurePath, skippedRowsToCsv(allFailures), "utf8");
+
+  // ── Step 11: Final report ───────────────────────────────────────────────────
+  console.log();
+  console.log(`✓ ${successRows.length} records written successfully`);
+
+  if (allFailures.length > 0) {
+    console.log(`✗ ${allFailures.length} rows failed`);
+    console.log(`  (${skipped.length} bad data, ${writeFailures.length} CouchDB rejections)`);
+  }
+
+  console.log();
+  console.log(`Success CSV → ${successPath}`);
+  console.log(`Failure CSV → ${failurePath}`);
+
+  if (writeFailures.length > 0) process.exit(1);
+}
+
+main().catch((err) => {
+  console.error("\nFatal error:", err instanceof Error ? err.message : err);
+  if (err instanceof Error && err.cause) console.error("Caused by:", err.cause);
+  process.exit(1);
+});
