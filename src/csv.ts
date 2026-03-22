@@ -9,7 +9,7 @@
  * 2026-01-27 02:31:00,First Bank,-53.75,Charges & Fees,Stamp Duty,
  * 2026-01-29 13:33:00,First Bank,-300000,Transfer,,
  * 2026-01-29 13:33:00,Palmpay,300000,Transfer,,
- * 2026-02-10 11:25:00,First Bank,300000,Wage & invoices,,BytebyBit
+ * 2026-02-10 11:25:00,First Bank,300000,Wage & invoices,,Company XYZ
  * ```
  *
  * ### Columns

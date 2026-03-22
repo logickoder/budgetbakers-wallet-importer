@@ -128,11 +128,9 @@ export async function fetchLookupData(couch: AxiosInstance): Promise<LookupData>
 export function buildLookupMapsFromData(data: LookupData): LookupMaps {
   const { accounts, categories, currencies } = data;
 
-  // currency id → ISO code, for resolving account currencies
-  const currencyById: Record<string, string> = {};
+  // currency code → full -Currency_<uuid>
   const currencyMap: Record<string, string> = {};
   for (const c of currencies) {
-    currencyById[c._id] = c._id;  // id → id (used below)
     currencyMap[c.code] = c._id;  // "NGN" → "-Currency_..."
   }
 

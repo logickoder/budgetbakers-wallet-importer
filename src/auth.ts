@@ -18,7 +18,7 @@ import { CookieJar } from "tough-cookie";
 import { wrapper } from "axios-cookiejar-support";
 import type { LoginResult, ReplicationConfig } from "./types.js";
 import type { Logger } from "./logger.js";
-import { requireTokenString } from "./utils.js";
+import { requireTokenString } from "./security/tokens.js";
 
 export const WEB_ORIGIN = "https://web.budgetbakers.com";
 export const API_ENDPOINT = `${WEB_ORIGIN}/api`;

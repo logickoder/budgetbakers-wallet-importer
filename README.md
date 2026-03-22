@@ -61,12 +61,23 @@ Logging is always written to a run log file under each user folder:
 `./data/<user-hash>/logs/importer-<timestamp>.log`
 
 `--debug` controls console verbosity only. File logging stays enabled in both modes.
+Logs are automatically pruned to keep the latest 40 per user.
 
 Use `--refresh-cache` to force a fresh lookup fetch from CouchDB:
 
 ```bash
 npm start -- --refresh-cache
 ```
+
+For automation / non-interactive runs:
+
+```bash
+npm start -- --email you@example.com --csv ./transactions.csv --yes
+```
+
+- `--email` skips email selection prompts
+- `--csv` skips CSV path prompt
+- `--yes` skips final write confirmation prompt
 
 When debug is enabled, the importer writes CouchDB lookup dumps under the selected user's data folder:
 
@@ -92,6 +103,7 @@ in that same `data/<user-hash>/` directory and reused by default.
 
 Cache files are not treated as dumps. The remaining "dump" output is debug snapshots under
 `data/<user-hash>/debug/couch-lookups-<timestamp>/`, created only when debug mode is enabled.
+Debug snapshots are automatically pruned to keep the latest 20 per user.
 
 ---
 
@@ -111,7 +123,7 @@ date,account,amount,category,note,payee
 2026-01-27 02:31:00,First Bank,-78.00,Charges & Fees,Stamp Duty,
 2026-01-29 13:33:00,First Bank,-300000,Transfer,,
 2026-01-29 13:33:00,Palmpay,300000,Transfer,,
-2026-02-10 11:25:00,First Bank,300000,Wage & invoices,,BytebyBit
+2026-02-10 11:25:00,First Bank,300000,Wage & invoices,,Company XYZ
 2026-02-08 16:52:00,First Bank,-8520,Restaurant & fast-food,,Chowdeck
 ```
 
@@ -226,17 +238,41 @@ SSO email.
 ```
 budgetbakers/
 ├── src/
-│   ├── cli.ts       Entry point — interactive terminal flow and output CSV writing
-│   ├── auth.ts      Next-Auth SSO login flow
-│   ├── couch.ts     CouchDB client and runtime lookup maps
-│   ├── csv.ts       CSV parser, converter, and serialiser
-│   ├── records.ts   CouchDB _bulk_docs writer
-│   └── types.ts     Shared TypeScript interfaces
+│   ├── cli/
+│   │   ├── index.ts       Main orchestration flow
+│   │   ├── options.ts     CLI argument parsing and help text
+│   │   ├── interaction.ts Prompting and saved-email selection UX
+│   │   ├── run.ts         Run helpers + cache/couch lookup resolver
+│   │   └── run.test.ts    Cache-hit vs refresh integration harness
+│   ├── auth.ts            Next-Auth SSO login flow
+│   ├── couch.ts           CouchDB client and runtime lookup maps
+│   ├── csv.ts             CSV parser, converter, and serialiser
+│   ├── logger.ts          File/console logger with redaction and levels
+│   ├── records.ts         CouchDB _bulk_docs writer
+│   ├── security/
+│   │   └── tokens.ts      Token extraction/validation helpers
+│   ├── storage/
+│   │   ├── index.ts       Storage barrel exports
+│   │   ├── paths.ts       User-path and key resolution
+│   │   ├── session.ts     Session index and user session persistence
+│   │   ├── cache.ts       Lookup cache read/write
+│   │   └── dumps.ts       Debug dump writing and retention pruning
+│   ├── types.ts           Shared TypeScript interfaces
 ├── docs/
 │   └── api.md       Full API reference (endpoints, field values, curl examples)
 ├── package.json
 └── tsconfig.json
 ```
+
+### Architecture overview
+
+- `cli/index.ts` coordinates flow only.
+- `cli/options.ts` handles all flag validation.
+- `cli/interaction.ts` handles all interactive questions.
+- `cli/run.ts` contains run utilities and testable cache-resolution logic.
+- `storage/*` owns persistence concerns (session index, per-user cache, dump and log file housekeeping).
+- `security/tokens.ts` isolates token extraction/validation utilities.
+- `auth.ts`, `couch.ts`, `records.ts`, and `csv.ts` stay focused on external integrations and data conversion.
 
 ---
 

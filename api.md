@@ -125,18 +125,18 @@ curl "https://couch-prod-eu-2.budgetbakers.com/bb-{userId}/" \
 
 Confirmed from `_all_docs` key prefixes:
 
-| Prefix | Type | Notes |
-|---|---|---|
-| `-Account_` | Account | Leading `-` sorts accounts before records |
-| `-Budget_` | Budget | Not used by the importer |
-| `-Category_` | Category | |
-| `-Configure_` | App config | Not used |
-| `-Currency_` | Currency | |
-| `-Debt_` | Debt tracking | Not used |
-| `-Filter_` | Saved filters | Not used |
-| `-Goal_` | Savings goals | Not used |
-| `-HashTag_` | Labels/hashtags | Referenced in `labels` on records |
-| `Record_` | Transaction | No leading `-`, sorts after everything else |
+| Prefix        | Type            | Notes                                       |
+| ------------- | --------------- | ------------------------------------------- |
+| `-Account_`   | Account         | Leading `-` sorts accounts before records   |
+| `-Budget_`    | Budget          | Not used by the importer                    |
+| `-Category_`  | Category        |                                             |
+| `-Configure_` | App config      | Not used                                    |
+| `-Currency_`  | Currency        |                                             |
+| `-Debt_`      | Debt tracking   | Not used                                    |
+| `-Filter_`    | Saved filters   | Not used                                    |
+| `-Goal_`      | Savings goals   | Not used                                    |
+| `-HashTag_`   | Labels/hashtags | Referenced in `labels` on records           |
+| `Record_`     | Transaction     | No leading `-`, sorts after everything else |
 
 ---
 
@@ -201,17 +201,17 @@ All fields confirmed from 20+ real Record documents. No fields are assumed.
 
 ### `type` values
 
-| Value | Meaning | Confirmed |
-|---|---|---|
-| `0` | Income | ✓ Record_009fd34a "Capitalised Interest" |
-| `1` | Expense | ✓ multiple records |
+| Value | Meaning | Confirmed                                |
+| ----- | ------- | ---------------------------------------- |
+| `0`   | Income  | ✓ Record_009fd34a "Capitalised Interest" |
+| `1`   | Expense | ✓ multiple records                       |
 
 ### `paymentType` values
 
-| Value | Meaning | Confirmed |
-|---|---|---|
-| `0` | Cash | ✓ Records: Valentines, Oyingbo, Agric |
-| `3` | Electronic/bank transfer | ✓ Records: Stamp Duty, HDMI, Plantain |
+| Value | Meaning                  | Confirmed                   |
+| ----- | ------------------------ | --------------------------- |
+| `0`   | Cash                     | ✓ Records: Transportation   |
+| `3`   | Electronic/bank transfer | ✓ Records: Stamp Duty, HDMI |
 
 ### Transfer pair structure
 
@@ -329,29 +329,29 @@ date,account,amount,category,note,payee
 2026-01-27 02:31:00,First Bank,-53.75,Charges & Fees,Stamp Duty,
 2026-01-29 13:33:00,First Bank,-300000,Transfer,,
 2026-01-29 13:33:00,Palmpay,300000,Transfer,,
-2026-02-10 11:25:00,First Bank,300000,Wage & invoices,,BytebyBit
+2026-02-10 11:25:00,First Bank,300000,Wage & invoices,,Company XYZ
 2026-02-28 15:00:00,First Bank,-25020,Restaurant & fast-food,Chowdeck,
 ```
 
 ### Column rules
 
-| Column | Notes |
-|---|---|
-| `date` | `YYYY-MM-DD HH:MM:SS` — treated as UTC |
-| `account` | Exact name as shown in the app |
-| `amount` | Signed float. Negative = expense, positive = income |
-| `category` | Exact name as shown in the app |
-| `note` | Optional free text |
-| `payee` | Optional — stored as a separate field on the record |
+| Column     | Notes                                               |
+| ---------- | --------------------------------------------------- |
+| `date`     | `YYYY-MM-DD HH:MM:SS` — treated as UTC              |
+| `account`  | Exact name as shown in the app                      |
+| `amount`   | Signed float. Negative = expense, positive = income |
+| `category` | Exact name as shown in the app                      |
+| `note`     | Optional free text                                  |
+| `payee`    | Optional — stored as a separate field on the record |
 
 ### What you don't fill in
 
-| Field | How it's derived |
-|---|---|
-| Currency | Taken from the account's own currency in CouchDB |
-| Transfer flag | Set when category is "Transfer, withdraw" + both rows share same timestamp |
-| Payment type | Transfer rows → 3 (electronic), all others → 0 (cash) |
-| Income/expense | Sign of `amount` |
+| Field          | How it's derived                                                           |
+| -------------- | -------------------------------------------------------------------------- |
+| Currency       | Taken from the account's own currency in CouchDB                           |
+| Transfer flag  | Set when category is "Transfer, withdraw" + both rows share same timestamp |
+| Payment type   | Transfer rows → 3 (electronic), all others → 0 (cash)                      |
+| Income/expense | Sign of `amount`                                                           |
 
 ### Transfer pairs
 
