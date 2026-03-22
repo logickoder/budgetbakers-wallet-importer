@@ -143,7 +143,7 @@ date,account,amount,category,note,payee
 
 | Column     | Required | Format                | Notes                                                |
 | ---------- | -------- | --------------------- | ---------------------------------------------------- |
-| `date`     | yes      | `YYYY-MM-DD HH:MM:SS` | Treated as UTC                                       |
+| `date`     | yes      | `YYYY-MM-DD HH:MM:SS` | Interpreted as local time (preserves entered hour)   |
 | `account`  | yes      | text                  | Must match the account name in the app exactly       |
 | `amount`   | yes      | signed number         | Negative = expense, positive = income                |
 | `category` | yes      | text                  | Must match the category name in the app exactly      |

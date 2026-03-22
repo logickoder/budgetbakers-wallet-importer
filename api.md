@@ -169,7 +169,7 @@ All fields confirmed from 20+ real Record documents. No fields are assumed.
   payee:               "Chowdeck",         // SEPARATE field — not embedded in note
 
   // Time
-  recordDate:          "2026-01-27T02:31:00.000+00:00",  // full ISO-8601 with time
+  recordDate:          "2026-01-27T02:31:00.000+01:00",  // full ISO-8601 with local offset
 
   // Payment
   paymentType:         3,                  // 0=cash, 3=electronic transfer
@@ -291,7 +291,7 @@ Content-Type: application/json
       "amount":             5375,
       "refAmount":          5375,
       "note":               "Stamp Duty",
-      "recordDate":         "2026-01-27T02:31:00.000+00:00",
+      "recordDate":         "2026-01-27T02:31:00.000+01:00",
       "recordState":        1,
       "paymentType":        3,
       "transfer":           false,
@@ -337,7 +337,7 @@ date,account,amount,category,note,payee
 
 | Column     | Notes                                               |
 | ---------- | --------------------------------------------------- |
-| `date`     | `YYYY-MM-DD HH:MM:SS` — treated as UTC              |
+| `date`     | `YYYY-MM-DD HH:MM:SS` — interpreted as local time   |
 | `account`  | Exact name as shown in the app                      |
 | `amount`   | Signed float. Negative = expense, positive = income |
 | `category` | Exact name as shown in the app                      |

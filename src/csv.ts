@@ -15,7 +15,7 @@
  * ### Columns
  * | Column     | Required | Notes                                              |
  * |------------|----------|----------------------------------------------------|
- * | `date`     | yes      | `YYYY-MM-DD HH:MM:SS` — treated as UTC             |
+ * | `date`     | yes      | `YYYY-MM-DD HH:MM:SS` — interpreted as local time  |
  * | `account`  | yes      | Exact account name as it appears in the app        |
  * | `amount`   | yes      | Signed float. Negative = expense, positive = income|
  * | `category` | yes      | Exact app category name, except transfer aliases   |
@@ -101,13 +101,38 @@ export function parseCsv(content: string): CsvRow[] {
 }
 
 /**
- * Converts a date string from the custom format to full ISO-8601 UTC.
+ * Converts a date string from the custom format to full ISO-8601.
+ *
+ * The CSV value is treated as local wall-clock time so the app shows the
+ * same hour the user entered.
  *
  * Input:  `"2026-01-27 02:31:00"`
- * Output: `"2026-01-27T02:31:00.000+00:00"`
+ * Output: `"2026-01-27T02:31:00.000+01:00"` (offset varies by machine/date)
  */
 export function toIso(date: string): string {
-  return date.trim().replace(" ", "T") + ".000+00:00";
+  const raw = date.trim();
+  const base = raw.replace(" ", "T");
+
+  const match = raw.match(/^([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})$/);
+  const localDate = match
+    ? new Date(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+      Number(match[4]),
+      Number(match[5]),
+      Number(match[6]),
+      0
+    )
+    : new Date();
+
+  const offsetMinutes = localDate.getTimezoneOffset();
+  const sign = offsetMinutes <= 0 ? "+" : "-";
+  const absMinutes = Math.abs(offsetMinutes);
+  const hh = String(Math.floor(absMinutes / 60)).padStart(2, "0");
+  const mm = String(absMinutes % 60).padStart(2, "0");
+
+  return `${base}.000${sign}${hh}:${mm}`;
 }
 
 /**
