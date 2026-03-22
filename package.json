@@ -4,7 +4,7 @@
   "description": "Direct CouchDB importer for BudgetBakers / Wallet app CSV exports",
   "type": "module",
   "scripts": {
-    "start": "ts-node --esm src/cli.ts",
+    "start": "tsx src/cli.ts",
     "build": "tsc",
     "run:built": "node dist/cli.js"
   },
@@ -20,8 +20,10 @@
   "devDependencies": {
     "@types/node": "^20.19.37",
     "@types/qs": "^6.15.0",
+    "@types/tough-cookie": "^4.0.5",
     "@types/uuid": "^9.0.8",
     "ts-node": "^10.9.2",
+    "tsx": "^4.20.6",
     "typescript": "^5.9.3"
   }
 }

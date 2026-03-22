@@ -32,7 +32,7 @@
 import fs from "fs";
 import path from "path";
 import readline from "readline";
-import { login } from "./auth.ts";
+import { login } from "./auth.js";
 import { buildCouchClient, buildLookupMaps } from "./couch.js";
 import { writeRecords } from "./records.js";
 import { parseCsv, convertRows, rowsToCsv, skippedRowsToCsv } from "./csv.js";

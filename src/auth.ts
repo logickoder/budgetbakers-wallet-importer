@@ -18,7 +18,7 @@ import { CookieJar } from "tough-cookie";
 import { wrapper } from "axios-cookiejar-support";
 import type { LoginResult, ReplicationConfig } from "./types.js";
 
-export const WEB_ORIGIN   = "https://web.budgetbakers.com";
+export const WEB_ORIGIN = "https://web.budgetbakers.com";
 export const API_ENDPOINT = `${WEB_ORIGIN}/api`;
 
 interface TrpcResponse<T> {
@@ -26,7 +26,7 @@ interface TrpcResponse<T> {
 }
 
 interface UserData {
-  userId:      string;
+  userId: string;
   replication: ReplicationConfig;
   [key: string]: unknown;
 }
@@ -35,7 +35,10 @@ interface UserData {
 export const jar = new CookieJar();
 
 /** Axios instance with cookie-jar support for web.budgetbakers.com. */
-export const webClient = wrapper(axios.create({ jar, withCredentials: true }));
+// NodeNext can surface dual-signature Axios types; normalize to wrapper input.
+export const webClient = wrapper(axios as unknown as Parameters<typeof wrapper>[0]);
+webClient.defaults.jar = jar;
+webClient.defaults.withCredentials = true;
 
 /**
  * Triggers an SSO login email to the given address.
@@ -147,7 +150,7 @@ export async function fetchUserData(): Promise<UserData> {
     `${API_ENDPOINT}/trpc/user.getUser?batch=1&input=${input}`
   );
   const data = res.data[0]?.result?.data?.json;
-  if (!data?.userId)      throw new Error("No userId in getUser response");
+  if (!data?.userId) throw new Error("No userId in getUser response");
   if (!data?.replication) throw new Error("No replication config in getUser response");
   return data;
 }
@@ -183,11 +186,11 @@ export async function login(
       WEB_ORIGIN
     );
   } else {
-    const ssoKey    = await requestSsoEmail(email);
-    const ssoToken  = await promptSsoToken();
+    const ssoKey = await requestSsoEmail(email);
+    const ssoToken = await promptSsoToken();
     const authToken = await confirmSsoAuth(email, ssoKey, ssoToken);
     const csrfToken = await fetchCsrfToken();
-    sessionToken    = await exchangeForSessionToken(authToken, csrfToken);
+    sessionToken = await exchangeForSessionToken(authToken, csrfToken);
   }
 
   const user = await fetchUserData();
