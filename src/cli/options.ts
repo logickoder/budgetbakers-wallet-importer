@@ -18,7 +18,7 @@ function parseLogLevel(value: string): LogLevelName | null {
 }
 
 function printHelp(): void {
-    console.log("Usage: budgetbakers-importer [flags]");
+    console.log("Usage: budgetbakers-wallet-importer [flags]");
     console.log("  --debug                Enable verbose debug logs (default)");
     console.log("  --no-debug             Disable verbose debug logs");
     console.log("  --refresh-cache        Force fresh lookup fetch from CouchDB");

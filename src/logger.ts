@@ -68,9 +68,9 @@ function redactSensitive(value: unknown): unknown {
 function formatLine(level: LogLevel, message: string, details?: unknown): string {
     const timestamp = new Date().toISOString();
     if (details === undefined) {
-        return `[budgetbakers-importer ${timestamp}] [${level}] ${message}`;
+        return `[budgetbakers-wallet-importer ${timestamp}] [${level}] ${message}`;
     }
-    return `[budgetbakers-importer ${timestamp}] [${level}] ${message} ${safeStringify(details)}`;
+    return `[budgetbakers-wallet-importer ${timestamp}] [${level}] ${message} ${safeStringify(details)}`;
 }
 
 function writeLine(filePath: string, line: string): void {

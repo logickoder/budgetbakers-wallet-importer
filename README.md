@@ -34,12 +34,24 @@ cd budgetbakers
 npm install
 ```
 
+If published on npm, install globally:
+
+```bash
+npm install -g budgetbakers-wallet-importer
+```
+
 ---
 
 ## Usage
 
 ```bash
 npm start
+```
+
+If installed globally from npm:
+
+```bash
+budgetbakers-wallet-importer
 ```
 
 Debug logging is enabled by default to help diagnose failures. You can disable it from run params:
