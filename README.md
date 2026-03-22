@@ -50,9 +50,27 @@ npm start -- --no-debug
 
 You can also pass `--debug` explicitly.
 
-When debug is enabled, the importer writes CouchDB lookup dumps to:
+Set minimum log level with `--log-level` (`info`, `warn`, or `error`):
 
-`./debug/couch-lookups-<timestamp>/`
+```bash
+npm start -- --log-level warn
+```
+
+Logging is always written to a run log file under each user folder:
+
+`./data/<user-hash>/logs/importer-<timestamp>.log`
+
+`--debug` controls console verbosity only. File logging stays enabled in both modes.
+
+Use `--refresh-cache` to force a fresh lookup fetch from CouchDB:
+
+```bash
+npm start -- --refresh-cache
+```
+
+When debug is enabled, the importer writes CouchDB lookup dumps under the selected user's data folder:
+
+`./data/<user-hash>/debug/couch-lookups-<timestamp>/`
 
 - `metadata.json`
 - `accounts.json`
@@ -62,13 +80,18 @@ When debug is enabled, the importer writes CouchDB lookup dumps to:
 
 The tool will ask for:
 
-1. **Your email address** — used to send an SSO login link on the first run
-2. **The SSO token** — paste the link or token from the login email (first run only)
+1. **Email selection** — choose a saved email or type a new one
+2. **The SSO token** — only needed when no valid saved session exists
 3. **Path to your CSV file**
 4. **Confirmation** — shows a summary before writing anything
 
-Your session is saved to `.budgetbakers-session` after the first login. Subsequent runs skip the SSO step entirely until
-the session expires.
+Sessions are indexed in `.budgetbakers-session.json` (email -> session details) and stored per user in
+`data/<user-hash>/session.json`.
+Lookup data (`accounts.json`, `categories.json`, `currencies.json`, `maps.json`, `metadata.json`) is cached per user
+in that same `data/<user-hash>/` directory and reused by default.
+
+Cache files are not treated as dumps. The remaining "dump" output is debug snapshots under
+`data/<user-hash>/debug/couch-lookups-<timestamp>/`, created only when debug mode is enabled.
 
 ---
 

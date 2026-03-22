@@ -159,3 +159,56 @@ export interface LookupData {
   categories: CategoryDoc[];
   currencies: CurrencyDoc[];
 }
+
+/** Session data persisted per user under data/<userKey>/session.json. */
+export interface UserSession {
+  email: string;
+  sessionToken: string;
+  userId: string;
+  savedAt: string;
+}
+
+/** Index stored in .budgetbakers-session.json for startup email selection. */
+export interface SessionIndex {
+  version: 1;
+  lastUsedEmail: string | null;
+  users: Record<string, SessionIndexUser>;
+}
+
+export interface SessionIndexUser {
+  userKey: string;
+  sessionFile: string;
+  sessionToken: string;
+  userId: string;
+  savedAt: string;
+}
+
+/** Metadata for cached lookup documents under a user's data directory. */
+export interface LookupCacheMetadata {
+  version: 1;
+  source: "couch" | "cache";
+  generatedAt: string;
+  email: string;
+  userKey: string;
+  userId: string;
+  counts: {
+    accounts: number;
+    categories: number;
+    currencies: number;
+  };
+  transferCategoryId: string | null;
+}
+
+export interface LookupCacheFiles {
+  metadata: string;
+  accounts: string;
+  categories: string;
+  currencies: string;
+  maps: string;
+}
+
+export interface LookupCacheSnapshot {
+  data: LookupData;
+  maps: LookupMaps;
+  metadata: LookupCacheMetadata;
+}

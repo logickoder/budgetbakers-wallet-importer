@@ -17,7 +17,7 @@ import readline from "readline";
 import { CookieJar } from "tough-cookie";
 import { wrapper } from "axios-cookiejar-support";
 import type { LoginResult, ReplicationConfig } from "./types.js";
-import { Logger } from "./logger.js";
+import type { Logger } from "./logger.js";
 import { requireTokenString } from "./utils.js";
 
 export const WEB_ORIGIN = "https://web.budgetbakers.com";
