@@ -1,6 +1,7 @@
 # BudgetBakers CSV Importer
 
-A command-line tool that writes transactions directly into your BudgetBakers / Wallet database — bypassing the official import pipeline to preserve full timestamps and support multiple accounts in a single file.
+A command-line tool that writes transactions directly into your BudgetBakers / Wallet database — bypassing the official
+import pipeline to preserve full timestamps and support multiple accounts in a single file.
 
 ---
 
@@ -8,12 +9,13 @@ A command-line tool that writes transactions directly into your BudgetBakers / W
 
 The official Wallet app import has two hard limitations:
 
-| Limitation | Impact |
-|---|---|
+| Limitation                       | Impact                                                               |
+|----------------------------------|----------------------------------------------------------------------|
 | Date format is `yyyy-MM-dd` only | Time of day is always stripped — every transaction lands at midnight |
-| One account per import file | Multi-account bank statements require splitting and multiple imports |
+| One account per import file      | Multi-account bank statements require splitting and multiple imports |
 
-This tool writes directly to the CouchDB database that powers the app, so timestamps are preserved to the second and every row can target a different account.
+This tool writes directly to the CouchDB database that powers the app, so timestamps are preserved to the second and
+every row can target a different account.
 
 ---
 
@@ -40,6 +42,14 @@ npm install
 npm start
 ```
 
+Debug logging is enabled by default to help diagnose failures. You can disable it from run params:
+
+```bash
+npm start -- --no-debug
+```
+
+You can also pass `--debug` explicitly.
+
 The tool will ask for:
 
 1. **Your email address** — used to send an SSO login link on the first run
@@ -47,7 +57,8 @@ The tool will ask for:
 3. **Path to your CSV file**
 4. **Confirmation** — shows a summary before writing anything
 
-Your session is saved to `.budgetbakers-session` after the first login. Subsequent runs skip the SSO step entirely until the session expires.
+Your session is saved to `.budgetbakers-session` after the first login. Subsequent runs skip the SSO step entirely until
+the session expires.
 
 ---
 
@@ -73,34 +84,36 @@ date,account,amount,category,note,payee
 
 ### Column reference
 
-| Column | Required | Format | Notes |
-|---|---|---|---|
-| `date` | yes | `YYYY-MM-DD HH:MM:SS` | Treated as UTC |
-| `account` | yes | text | Must match the account name in the app exactly |
-| `amount` | yes | signed number | Negative = expense, positive = income |
-| `category` | yes | text | Must match the category name in the app exactly |
-| `note` | no | text | Optional description |
-| `payee` | no | text | Stored as a separate field, not embedded in the note |
+| Column     | Required | Format                | Notes                                                |
+|------------|----------|-----------------------|------------------------------------------------------|
+| `date`     | yes      | `YYYY-MM-DD HH:MM:SS` | Treated as UTC                                       |
+| `account`  | yes      | text                  | Must match the account name in the app exactly       |
+| `amount`   | yes      | signed number         | Negative = expense, positive = income                |
+| `category` | yes      | text                  | Must match the category name in the app exactly      |
+| `note`     | no       | text                  | Optional description                                 |
+| `payee`    | no       | text                  | Stored as a separate field, not embedded in the note |
 
 ### What you don't need to fill in
 
-| Field | How it's determined |
-|---|---|
-| Currency | Taken from the account's own currency — no column needed |
-| Income / expense | Sign of `amount` |
-| Transfer flag | Detected automatically — see Transfers below |
-| Payment type | Electronic for transfers, cash for everything else |
+| Field            | How it's determined                                      |
+|------------------|----------------------------------------------------------|
+| Currency         | Taken from the account's own currency — no column needed |
+| Income / expense | Sign of `amount`                                         |
+| Transfer flag    | Detected automatically — see Transfers below             |
+| Payment type     | Electronic for transfers, cash for everything else       |
 
 ### Transfers
 
-Write two rows with the same `date` and category `Transfer` (or whatever you named the transfer category in the app). The importer links them automatically.
+Write two rows with the same `date` and category `Transfer` (or whatever you named the transfer category in the app).
+The importer links them automatically.
 
 ```csv
 2026-01-29 13:33:00,First Bank,-300000,Transfer,,
 2026-01-29 13:33:00,Palmpay,300000,Transfer,,
 ```
 
-Both the category name and the timestamp must match for the pair to be linked. If a transfer row has no matching second leg, it is moved to the failure file with an explanation.
+Both the category name and the timestamp must match for the pair to be linked. If a transfer row has no matching second
+leg, it is moved to the failure file with an explanation.
 
 ---
 
@@ -108,10 +121,10 @@ Both the category name and the timestamp must match for the pair to be linked. I
 
 After each run, two files are written alongside your input CSV:
 
-| File | Contents |
-|---|---|
+| File                 | Contents                                            |
+|----------------------|-----------------------------------------------------|
 | `<name>_success.csv` | Rows that were written to BudgetBakers successfully |
-| `<name>_failure.csv` | Rows that failed, with an extra `reason` column |
+| `<name>_failure.csv` | Rows that failed, with an extra `reason` column     |
 
 The failure file is already in the correct CSV format — fix the issues, rename it, and re-run it as the input.
 
@@ -165,10 +178,12 @@ The account name in your CSV does not match the app exactly. Open the app, check
 Same as above for categories. Category names are case-sensitive and must match character for character.
 
 **`Transfer row has no matching pair`**
-A row with the transfer category has no corresponding second row with the same timestamp. Check that both legs have the exact same `date` string.
+A row with the transfer category has no corresponding second row with the same timestamp. Check that both legs have the
+exact same `date` string.
 
 **`Session expired — starting fresh SSO flow`**
-Your saved session token has expired. The tool handles this automatically — it clears the old token and triggers a new SSO email.
+Your saved session token has expired. The tool handles this automatically — it clears the old token and triggers a new
+SSO email.
 
 ---
 
@@ -199,16 +214,22 @@ BudgetBakers stores all data in a personal CouchDB database:
 https://couch-prod-eu-2.budgetbakers.com/bb-{userId}/
 ```
 
-The mobile and web apps use PouchDB to sync changes to this database. This tool authenticates with the same credentials the app uses and writes `Record` documents directly via `_bulk_docs` — the same way the app itself does, just without going through the web UI.
+The mobile and web apps use PouchDB to sync changes to this database. This tool authenticates with the same credentials
+the app uses and writes `Record` documents directly via `_bulk_docs` — the same way the app itself does, just without
+going through the web UI.
 
-Authentication is handled via BudgetBakers' Next-Auth SSO flow. After the first login the session token is cached locally, so subsequent runs don't require an SSO email.
+Authentication is handled via BudgetBakers' Next-Auth SSO flow. After the first login the session token is cached
+locally, so subsequent runs don't require an SSO email.
 
-Full technical details including all confirmed endpoint shapes, field values, and curl examples are in [`docs/api.md`](docs/api.md).
+Full technical details including all confirmed endpoint shapes, field values, and curl examples are in [
+`docs/api.md`](docs/api.md).
 
 ---
 
 ## Limitations
 
-- **CouchDB only** — this writes directly to the database. If BudgetBakers changes their database infrastructure, the tool will need updating.
-- **No duplicate detection** — running the same CSV twice will create duplicate records. Use the `_success.csv` output to track what has already been imported.
+- **CouchDB only** — this writes directly to the database. If BudgetBakers changes their database infrastructure, the
+  tool will need updating.
+- **No duplicate detection** — running the same CSV twice will create duplicate records. Use the `_success.csv` output
+  to track what has already been imported.
 - **No delete or edit** — this tool only creates new records.
