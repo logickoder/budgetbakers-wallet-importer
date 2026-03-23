@@ -91,6 +91,16 @@ npm start -- --email you@example.com --csv ./transactions.csv --yes
 - `--csv` skips CSV path prompt
 - `--yes` skips final write confirmation prompt
 
+### Import safely in small batches
+
+Because this tool writes directly to the live Wallet database, avoid importing very large files in one go.
+
+- Prefer small batches of about 20 rows per run
+- Review the generated `_success.csv` and `_failure.csv` after each batch
+- Fix any failures before running the next batch
+
+This approach makes mistakes easier to catch and limits the blast radius if a mapping or data issue slips through.
+
 When debug is enabled, the importer writes CouchDB lookup dumps under the selected user's data folder:
 
 `./data/<user-hash>/debug/couch-lookups-<timestamp>/`
