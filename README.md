@@ -286,13 +286,18 @@ budgetbakers/
 │   ├── cli/
 │   │   ├── index.ts       Main orchestration flow
 │   │   ├── interaction.ts Prompting and saved-email selection UX
+│   │   ├── maintenance.ts List/revert recent records flow
+│   │   ├── options/
+│   │   │   ├── index.ts   CLI options entry + help/exit behavior
+│   │   │   ├── core.ts    Pure argument parsing and validation
+│   │   │   └── types.ts   Shared RunOptions interfaces
 │   │   ├── run.ts         Run helpers + cache/couch lookup resolver
-│   │   └── run.test.ts    Cache-hit vs refresh integration harness
 │   ├── auth.ts            Next-Auth SSO login flow
 │   ├── couch.ts           CouchDB client and runtime lookup maps
 │   ├── csv.ts             CSV parser, converter, and serialiser
+│   ├── date-time.ts       Local date parsing + ISO normalization
 │   ├── logger.ts          File/console logger with redaction and levels
-│   ├── records.ts         CouchDB _bulk_docs writer
+│   ├── records.ts         CouchDB _bulk_docs writer + recent-record listing/deletes
 │   ├── security/
 │   │   └── tokens.ts      Token extraction/validation helpers
 │   ├── storage/
@@ -301,9 +306,15 @@ budgetbakers/
 │   │   ├── session.ts     Session index and user session persistence
 │   │   ├── cache.ts       Lookup cache read/write
 │   │   └── dumps.ts       Debug dump writing and retention pruning
+│   ├── tests/
+│   │   ├── cli/
+│   │   │   ├── maintenance.test.ts
+│   │   │   ├── run.test.ts
+│   │   │   └── options/core.test.ts
+│   │   ├── csv.test.ts
+│   │   └── date-time.test.ts
 │   ├── types.ts           Shared TypeScript interfaces
-├── docs/
-│   └── api.md       Full API reference (endpoints, field values, curl examples)
+├── api.md       Full API reference (endpoints, field values, curl examples)
 ├── package.json
 └── tsconfig.json
 ```
@@ -311,11 +322,14 @@ budgetbakers/
 ### Architecture overview
 
 - `cli/index.ts` coordinates flow only.
+- `cli/options/*` owns all CLI argument parsing and validation.
 - `cli/interaction.ts` handles all interactive questions.
+- `cli/maintenance.ts` handles list/revert flows for recent records.
 - `cli/run.ts` contains run utilities and testable cache-resolution logic.
 - `storage/*` owns persistence concerns (session index, per-user cache, dump and log file housekeeping).
 - `security/tokens.ts` isolates token extraction/validation utilities.
-- `auth.ts`, `couch.ts`, `records.ts`, and `csv.ts` stay focused on external integrations and data conversion.
+- `auth.ts`, `couch.ts`, `records.ts`, `csv.ts`, and `date-time.ts` stay focused on external integrations and data conversion.
+- `src/tests/*` mirrors source-module paths for maintainable test discovery.
 
 ---
 
@@ -334,8 +348,7 @@ going through the web UI.
 Authentication is handled via BudgetBakers' Next-Auth SSO flow. After the first login the session token is cached
 locally, so subsequent runs don't require an SSO email.
 
-Full technical details including all confirmed endpoint shapes, field values, and curl examples are in [
-`docs/api.md`](docs/api.md).
+Full technical details including all confirmed endpoint shapes, field values, and curl examples are in [api.md](api.md).
 
 ---
 
