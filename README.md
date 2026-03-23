@@ -285,7 +285,6 @@ budgetbakers/
 ├── src/
 │   ├── cli/
 │   │   ├── index.ts       Main orchestration flow
-│   │   ├── options.ts     CLI argument parsing and help text
 │   │   ├── interaction.ts Prompting and saved-email selection UX
 │   │   ├── run.ts         Run helpers + cache/couch lookup resolver
 │   │   └── run.test.ts    Cache-hit vs refresh integration harness
@@ -312,7 +311,6 @@ budgetbakers/
 ### Architecture overview
 
 - `cli/index.ts` coordinates flow only.
-- `cli/options.ts` handles all flag validation.
 - `cli/interaction.ts` handles all interactive questions.
 - `cli/run.ts` contains run utilities and testable cache-resolution logic.
 - `storage/*` owns persistence concerns (session index, per-user cache, dump and log file housekeeping).

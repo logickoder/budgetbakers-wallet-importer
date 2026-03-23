@@ -1,6 +1,6 @@
 {
   "name": "budgetbakers-wallet-importer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Direct CouchDB importer for BudgetBakers / Wallet app CSV exports",
   "type": "module",
   "bin": {

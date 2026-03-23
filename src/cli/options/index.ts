@@ -1,5 +1,5 @@
-import { OptionsParseError, parseRunOptionsOrThrow } from "./core.js";
-import type { RunOptions } from "./types.js";
+import {OptionsParseError, parseRunOptionsOrThrow} from "./core.js";
+import type {RunOptions} from "./types.js";
 
 function printHelp(): void {
     console.log("Usage: budgetbakers-wallet-importer [flags]");
