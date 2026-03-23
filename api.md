@@ -169,7 +169,7 @@ All fields confirmed from 20+ real Record documents. No fields are assumed.
   payee:               "Chowdeck",         // SEPARATE field — not embedded in note
 
   // Time
-  recordDate:          "2026-01-27T02:31:00.000+01:00",  // full ISO-8601 with local offset
+  recordDate:          "2026-01-27T02:31:00.000+01:00",  // full ISO-8601 with local offset (canonicalized by importer)
 
   // Payment
   paymentType:         3,                  // 0=cash, 3=electronic transfer

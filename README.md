@@ -91,15 +91,32 @@ npm start -- --email you@example.com --csv ./transactions.csv --yes
 - `--csv` skips CSV path prompt
 - `--yes` skips final write confirmation prompt
 
-### Import safely in small batches
+Rollback helpers:
 
-Because this tool writes directly to the live Wallet database, avoid importing very large files in one go.
+```bash
+# Preview the last 20 published Record docs
+npm start -- --list-last 20
 
-- Prefer small batches of about 20 rows per run
-- Review the generated `_success.csv` and `_failure.csv` after each batch
-- Fix any failures before running the next batch
+# Preview the last 20 records within a timestamp window
+npm start -- --list-last 20 --start-ts "2026-03-23T08:00:00Z" --end-ts "2026-03-23T09:00:00Z"
 
-This approach makes mistakes easier to catch and limits the blast radius if a mapping or data issue slips through.
+# Delete (rollback) the last 20 published Record docs
+npm start -- --rollback-last 20
+
+# Delete (rollback) the last 20 records in a timestamp window
+npm start -- --rollback-last 20 --start-ts "2026-03-23T08:00:00Z" --end-ts "2026-03-23T09:00:00Z"
+```
+
+- `--list-last <count>` lists recent records and exits
+- `--rollback-last <count>` lists then deletes those records after confirmation
+- `--start-ts <timestamp>` optional lower bound for filtering by `created` time
+- `--end-ts <timestamp>` optional upper bound for filtering by `created` time
+- timestamp filters are applied after fetching the requested last `<count>` records
+- Add `--yes` to skip the interactive confirmation prompt in rollback mode
+
+If the app behaves unexpectedly after an import, use --rollback-last to revert the most recent records, check what failed (for example an invalid date format), then rerun after fixing the source CSV.
+
+Small batches are optional, but they can make errors easier to catch early when troubleshooting.
 
 When debug is enabled, the importer writes CouchDB lookup dumps under the selected user's data folder:
 
@@ -159,6 +176,12 @@ date,account,amount,category,note,payee
 | `category` | yes      | text                  | Must match the category name in the app exactly      |
 | `note`     | no       | text                  | Optional description                                 |
 | `payee`    | no       | text                  | Stored as a separate field, not embedded in the note |
+
+Date normalization:
+
+- Importer writes `recordDate` in canonical format: `YYYY-MM-DDTHH:mm:ss.SSS±HH:mm`
+- Input date values are interpreted as local wall-clock time and normalized before upload
+- Supported input examples include `YYYY-MM-DD HH:MM:SS`, `YYYY-MM-DDTHH:MM:SS`, and `M/D/YYTHH:mm(.SSS)(±HH:mm)`
 
 ### What you don't need to fill in
 
@@ -324,4 +347,4 @@ Full technical details including all confirmed endpoint shapes, field values, an
   tool will need updating.
 - **No duplicate detection** — running the same CSV twice will create duplicate records. Use the `_success.csv` output
   to track what has already been imported.
-- **No delete or edit** — this tool only creates new records.
+- **No edit flow** — record updates are not supported. Rollback supports delete-only for targeted recent records.

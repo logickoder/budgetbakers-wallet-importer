@@ -12,7 +12,7 @@ import { buildCouchClient, buildLookupMapsFromData, fetchLookupData } from "../c
 import type { CsvRow, SkippedRow } from "../csv.js";
 import { convertRows, parseCsv, rowsToCsv, skippedRowsToCsv } from "../csv.js";
 import { createLogger } from "../logger.js";
-import { writeRecords } from "../records.js";
+import { deleteRecords, listLastRecords, writeRecords } from "../records.js";
 import type { UserSession } from "../types.js";
 import {
     loadLookupCache,
@@ -103,6 +103,97 @@ async function main() {
         dbName: loginResult.replication.dbName,
         baseUrl: loginResult.replication.url,
     });
+
+    if (options.listLastRequested || options.rollbackLastRequested) {
+        const requestedCount = options.rollbackLastRequested ? options.rollbackLastRecords : options.listLastRecords;
+        const rollbackMode = options.rollbackLastRequested;
+        const window = {
+            startTimestamp: options.startTimestamp,
+            endTimestamp: options.endTimestamp,
+        };
+
+        console.log(`${rollbackMode ? "Preparing rollback" : "Fetching recent records"}...`);
+        if (window.startTimestamp || window.endTimestamp) {
+            console.log(
+                `Applying timestamp filter: start=${window.startTimestamp ?? "-"}, ` +
+                `end=${window.endTimestamp ?? "-"}`
+            );
+        }
+
+        const records = await listLastRecords(couch, requestedCount);
+        log("Recent records fetched", {
+            requestedCount,
+            fetchedCount: records.length,
+            rollbackMode,
+            startTimestamp: window.startTimestamp,
+            endTimestamp: window.endTimestamp,
+        });
+
+        if (!records.length) {
+            console.log("No records found.");
+            process.exit(0);
+        }
+
+        const startMs = window.startTimestamp ? Date.parse(window.startTimestamp) : null;
+        const endMs = window.endTimestamp ? Date.parse(window.endTimestamp) : null;
+
+        const filtered = records.filter((record) => {
+            const createdMs = Date.parse(record.createdAt);
+            if (Number.isNaN(createdMs)) return false;
+            if (startMs !== null && createdMs < startMs) return false;
+            if (endMs !== null && createdMs > endMs) return false;
+            return true;
+        });
+
+        log("Recent records post-filtered by created timestamp", {
+            fetchedCount: records.length,
+            filteredCount: filtered.length,
+            startTimestamp: window.startTimestamp,
+            endTimestamp: window.endTimestamp,
+        });
+
+        if (!filtered.length) {
+            console.log("No records found after timestamp filter.");
+            process.exit(0);
+        }
+
+        console.log(`\nLast ${requestedCount} records (showing ${filtered.length} after created-time filter):`);
+        for (let i = 0; i < filtered.length; i++) {
+            const doc = filtered[i];
+            console.log(
+                `  [${i + 1}] ${doc.ref._id} | created=${doc.createdAt} | ` +
+                `recordDate=${doc.recordDate} | amount=${doc.amount} | account=${doc.accountId}`
+            );
+        }
+
+        if (!rollbackMode) {
+            process.exit(0);
+        }
+
+        if (!options.yes) {
+            const confirm = await ask(`\nDelete these ${filtered.length} records permanently? Type DELETE to continue: `);
+            if (confirm.trim() !== "DELETE") {
+                console.log("Rollback aborted.");
+                process.exit(0);
+            }
+        }
+
+        console.log("\nDeleting records...");
+        const results = await deleteRecords(couch, filtered.map((entry) => entry.ref));
+        const successCount = results.filter((result) => result.ok).length;
+        const failed = results.filter((result) => result.error);
+
+        console.log(`✓ Deleted ${successCount} record(s)`);
+        if (failed.length > 0) {
+            console.log(`✗ Failed to delete ${failed.length} record(s)`);
+            for (const entry of failed) {
+                console.log(`  - ${entry.id}: ${entry.error} — ${entry.reason}`);
+            }
+            process.exit(1);
+        }
+
+        process.exit(0);
+    }
 
     const lookup = await resolveLookupData({
         email,

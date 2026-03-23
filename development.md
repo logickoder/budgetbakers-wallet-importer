@@ -31,6 +31,7 @@ Accordingly:
 - **Correctness beats cleverness.** A boring, readable solution that is obviously correct is always preferred over a compact one that requires thought to verify.
 - **Explicit beats implicit.** Every value that touches CouchDB should be traceable to a confirmed source — a real document, a curl response, a network capture. Nothing should exist because it "seems right."
 - **Fail loudly and early.** A row that cannot be resolved should never be silently dropped or written with a fallback value. It goes to the failure CSV with a clear reason.
+- **Keep code modular and clean.** New features should be built from small, focused functions and modules with clear responsibilities, minimal coupling, and readable naming.
 
 ---
 
@@ -119,14 +120,14 @@ Use `let` only when reassignment is genuinely required. Never use `var`.
 
 Each file has exactly one responsibility. The current breakdown is:
 
-| File | Responsibility |
-|---|---|
-| `types.ts` | All shared interfaces — no logic |
-| `auth.ts` | Next-Auth SSO flow only |
-| `couch.ts` | CouchDB client factory and lookup fetchers |
-| `csv.ts` | CSV parsing, conversion, and serialisation |
-| `records.ts` | CouchDB `_bulk_docs` write and `getRecord` |
-| `cli.ts` | Terminal interaction and output file writing |
+| File         | Responsibility                               |
+| ------------ | -------------------------------------------- |
+| `types.ts`   | All shared interfaces — no logic             |
+| `auth.ts`    | Next-Auth SSO flow only                      |
+| `couch.ts`   | CouchDB client factory and lookup fetchers   |
+| `csv.ts`     | CSV parsing, conversion, and serialisation   |
+| `records.ts` | CouchDB `_bulk_docs` write and `getRecord`   |
+| `cli.ts`     | Terminal interaction and output file writing |
 
 **Rules:**
 
@@ -472,13 +473,13 @@ All changes go through a branch and are reviewed before merging — even if you 
 
 ## What Never Goes in the Repo
 
-| Item | Why |
-|---|---|
-| `.budgetbakers-session` | Contains your live session token |
+| Item                                                                  | Why                                      |
+| --------------------------------------------------------------------- | ---------------------------------------- |
+| `.budgetbakers-session`                                               | Contains your live session token         |
 | Any file containing `replication.token` or `replication.login` values | These are production CouchDB credentials |
-| Hardcoded user ids, document ids, or CouchDB urls | These are personal to your account |
-| `node_modules/` | Reproduced by `npm install` |
-| `dist/` | Reproduced by `npm run build` |
+| Hardcoded user ids, document ids, or CouchDB urls                     | These are personal to your account       |
+| `node_modules/`                                                       | Reproduced by `npm install`              |
+| `dist/`                                                               | Reproduced by `npm run build`            |
 
 Add these to `.gitignore`:
 

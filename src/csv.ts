@@ -39,6 +39,7 @@
 
 import { parse } from "csv-parse/sync";
 import { stringify } from "csv-stringify/sync";
+import { DateTime } from "luxon";
 import { RECORD_TYPE, PAYMENT_TYPE } from "./records.js";
 import type { LookupMaps, NewRecord } from "./types.js";
 
@@ -109,30 +110,60 @@ export function parseCsv(content: string): CsvRow[] {
  * Input:  `"2026-01-27 02:31:00"`
  * Output: `"2026-01-27T02:31:00.000+01:00"` (offset varies by machine/date)
  */
+const DATE_INPUT_FORMATS = [
+  "yyyy-MM-dd HH:mm:ss",
+  "yyyy-MM-dd HH:mm",
+  "yyyy-MM-dd'T'HH:mm:ss",
+  "yyyy-MM-dd'T'HH:mm",
+  "M/d/yy H:mm:ss.SSS",
+  "M/d/yy H:mm:ss",
+  "M/d/yy H:mm.SSS",
+  "M/d/yy H:mm",
+  "M/d/yyyy H:mm:ss.SSS",
+  "M/d/yyyy H:mm:ss",
+  "M/d/yyyy H:mm.SSS",
+  "M/d/yyyy H:mm",
+  "M/d/yy'T'H:mm:ss.SSS",
+  "M/d/yy'T'H:mm:ss",
+  "M/d/yy'T'H:mm.SSS",
+  "M/d/yy'T'H:mm",
+  "M/d/yyyy'T'H:mm:ss.SSS",
+  "M/d/yyyy'T'H:mm:ss",
+  "M/d/yyyy'T'H:mm.SSS",
+  "M/d/yyyy'T'H:mm",
+] as const;
+
+function stripTrailingOffset(raw: string): string {
+  return raw.trim().replace(/(?:Z|[+-]\d{2}:\d{2})$/i, "");
+}
+
+function parseAsLocalDateTime(raw: string): DateTime | null {
+  const cleaned = stripTrailingOffset(raw);
+
+  for (const fmt of DATE_INPUT_FORMATS) {
+    const parsed = DateTime.fromFormat(cleaned, fmt, {
+      zone: "local",
+      setZone: false,
+      locale: "en-US",
+    });
+    if (parsed.isValid) return parsed;
+  }
+
+  const isoParsed = DateTime.fromISO(cleaned, {
+    zone: "local",
+    setZone: false,
+  });
+
+  if (isoParsed.isValid) return isoParsed;
+  return null;
+}
+
 export function toIso(date: string): string {
-  const raw = date.trim();
-  const base = raw.replace(" ", "T");
-
-  const match = raw.match(/^([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})$/);
-  const localDate = match
-    ? new Date(
-      Number(match[1]),
-      Number(match[2]) - 1,
-      Number(match[3]),
-      Number(match[4]),
-      Number(match[5]),
-      Number(match[6]),
-      0
-    )
-    : new Date();
-
-  const offsetMinutes = localDate.getTimezoneOffset();
-  const sign = offsetMinutes <= 0 ? "+" : "-";
-  const absMinutes = Math.abs(offsetMinutes);
-  const hh = String(Math.floor(absMinutes / 60)).padStart(2, "0");
-  const mm = String(absMinutes % 60).padStart(2, "0");
-
-  return `${base}.000${sign}${hh}:${mm}`;
+  const parsed = parseAsLocalDateTime(date);
+  if (!parsed) {
+    throw new Error(`Invalid date: "${date}"`);
+  }
+  return parsed.toFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZZ");
 }
 
 /**
@@ -221,7 +252,16 @@ export function convertRows(rows: CsvRow[], maps: LookupMaps): ParseResult {
 
     // ── Derived fields ──────────────────────────────────────────────────────
     const type = rawAmount < 0 ? RECORD_TYPE.EXPENSE : RECORD_TYPE.INCOME;
-    const recordDate = toIso(row.date);
+    let recordDate: string;
+    try {
+      recordDate = toIso(row.date);
+    } catch {
+      skipped.push({
+        row,
+        reason: `Invalid date: "${row.date}" — expected a parseable local date/time`,
+      });
+      continue;
+    }
 
     const isTransfer = maps.transferCategoryId !== null
       && categoryId === maps.transferCategoryId;
