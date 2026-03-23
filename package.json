@@ -18,7 +18,7 @@
     "start": "tsx src/cli/index.ts",
     "build": "tsc",
     "run:built": "node dist/cli/index.js",
-    "test": "tsx --test src/**/*.test.ts",
+    "test": "tsx --test \"src/tests/**/*.test.ts\"",
     "prepack": "pnpm test && pnpm build"
   },
   "dependencies": {

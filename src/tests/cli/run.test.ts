@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import type { Logger } from "../logger.js";
-import type { LookupCacheSnapshot, LookupData, LookupMaps } from "../types.js";
-import { resolveLookupData } from "./run.js";
+import type { Logger } from "../../logger.js";
+import type { LookupCacheSnapshot, LookupData, LookupMaps } from "../../types.js";
+import { resolveLookupData } from "../../cli/run.js";
 
 function makeLogger(): Logger {
     const base = ((_: string, __?: unknown): void => undefined) as Logger;

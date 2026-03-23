@@ -135,6 +135,8 @@ Each file has exactly one responsibility. The current breakdown is:
 - `auth.ts` must not import from `couch.ts`, `csv.ts`, or `records.ts`.
 - `cli.ts` is the only file allowed to do I/O (stdin, stdout, file system). All other modules are pure functions that receive their dependencies.
 - Do not add a seventh file without a clear single-responsibility reason. Prefer extending an existing file if the new code clearly belongs there.
+- For non-trivial CLI argument parsing, use a folder module layout: `src/cli/options/index.ts` (public entry), `src/cli/options/core.ts` (pure parsing/validation), and `src/cli/options/types.ts` (shared option interfaces).
+- Keep test files under `src/tests/` and mirror source subpaths. Example: `src/cli/options/core.ts` maps to `src/tests/cli/options/core.test.ts`.
 
 ### Import order
 
