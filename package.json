@@ -29,7 +29,7 @@
     "luxon": "^3.7.2",
     "qs": "^6.15.0",
     "tough-cookie": "^4.1.4",
-    "uuid": "^9.0.1"
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@types/luxon": "^3.7.1",
