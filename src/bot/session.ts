@@ -25,6 +25,8 @@ export interface BotSession {
   chatId: number;
   /** UUID we pass to claude --session-id / --resume. Generated on first turn. */
   claudeSessionId: string;
+  /** Count of Claude invocations for this session. 0 = first turn (use --session-id). */
+  turnsSent: number;
   lastSeenAt: number;
   /** A proposal awaiting "confirmar"/"si"/"yes". Cleared on confirm/cancel. */
   pending: PendingProposal | null;
@@ -38,6 +40,7 @@ export function getOrCreateSession(chatId: number): BotSession {
     s = {
       chatId,
       claudeSessionId: randomUUID(),
+      turnsSent: 0,
       lastSeenAt: Date.now(),
       pending: null,
     };
@@ -46,6 +49,11 @@ export function getOrCreateSession(chatId: number): BotSession {
     s.lastSeenAt = Date.now();
   }
   return s;
+}
+
+export function markTurnSent(chatId: number): void {
+  const s = sessions.get(chatId);
+  if (s) s.turnsSent += 1;
 }
 
 export function resetSession(chatId: number): BotSession {
