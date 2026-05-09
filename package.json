@@ -16,6 +16,8 @@
   },
   "scripts": {
     "start": "tsx src/cli/index.ts",
+    "bot": "tsx src/bot/index.ts",
+    "bot:built": "node dist/bot/index.js",
     "build": "tsc",
     "run:built": "node dist/cli/index.js",
     "test": "tsx --test \"src/tests/**/*.test.ts\"",
@@ -28,6 +30,7 @@
     "csv-stringify": "^6.7.0",
     "luxon": "^3.7.2",
     "qs": "^6.15.0",
+    "telegraf": "^4.16.3",
     "tough-cookie": "^4.1.4",
     "uuid": "^9.0.1"
   },
