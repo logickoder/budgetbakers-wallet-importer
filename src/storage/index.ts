@@ -1,6 +1,7 @@
 export {
     SESSION_INDEX_FILE,
     emailToUserKey,
+    isValidEmail,
     normalizeEmail,
     sessionIndexPath,
     userDataDir,

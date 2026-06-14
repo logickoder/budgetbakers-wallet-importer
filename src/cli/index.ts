@@ -7,7 +7,7 @@
 import fs from "fs";
 import path from "path";
 
-import { login } from "../auth.js";
+import { clearAuthCookies, login } from "../auth.js";
 import { buildCouchClient, buildLookupMapsFromData, fetchLookupData } from "../couch.js";
 import type { CsvRow, SkippedRow } from "../csv.js";
 import { convertRows, parseCsv, rowsToCsv, skippedRowsToCsv } from "../csv.js";
@@ -81,6 +81,8 @@ async function main() {
         if (savedSession) {
             console.log("Session expired — starting fresh SSO flow.\n");
             sessionIndex = removeUserSession(sessionIndex, email);
+            await clearAuthCookies();
+            log("Auth cookie jar cleared before fresh SSO retry");
             loginResult = await login(email, null, log);
         } else {
             throw new Error("Login failed", { cause: error });

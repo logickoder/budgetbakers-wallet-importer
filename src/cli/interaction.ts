@@ -1,6 +1,6 @@
 import readline from "readline";
 
-import { listSavedEmails, normalizeEmail } from "../storage/index.js";
+import { isValidEmail, listSavedEmails, normalizeEmail } from "../storage/index.js";
 import type { SessionIndex } from "../types.js";
 
 export function ask(question: string): Promise<string> {
@@ -13,21 +13,31 @@ export function ask(question: string): Promise<string> {
     });
 }
 
+function normalizeAndValidate(value: string): string | null {
+    const normalized = normalizeEmail(value);
+    return isValidEmail(normalized) ? normalized : null;
+}
+
 export async function askRequiredEmail(prompt: string): Promise<string> {
     while (true) {
-        const answer = normalizeEmail(await ask(prompt));
-        if (answer) return answer;
-        console.error("Email is required.");
+        const raw = await ask(prompt);
+        if (!raw.trim()) {
+            console.error("Email is required.");
+            continue;
+        }
+        const valid = normalizeAndValidate(raw);
+        if (valid) return valid;
+        console.error(`"${raw}" is not a valid email address.`);
     }
 }
 
 export async function selectEmail(index: SessionIndex, explicitEmail: string | null): Promise<string> {
     if (explicitEmail) {
-        const normalized = normalizeEmail(explicitEmail);
-        if (!normalized) {
-            throw new Error("--email was provided but empty");
+        const valid = normalizeAndValidate(explicitEmail);
+        if (!valid) {
+            throw new Error(`--email "${explicitEmail}" is not a valid email address.`);
         }
-        return normalized;
+        return valid;
     }
 
     const savedEmails = listSavedEmails(index);
@@ -39,10 +49,15 @@ export async function selectEmail(index: SessionIndex, explicitEmail: string | n
     if (savedEmails.length === 1) {
         const onlyEmail = savedEmails[0];
         console.log(`Found saved session for ${onlyEmail}.`);
-        const answer = await ask(
-            `Press Enter to continue with ${onlyEmail}, or type a different email: `
-        );
-        return answer.trim() ? normalizeEmail(answer) : onlyEmail;
+        while (true) {
+            const answer = await ask(
+                `Press Enter to continue with ${onlyEmail}, or type a different email: `
+            );
+            if (!answer.trim()) return onlyEmail;
+            const valid = normalizeAndValidate(answer);
+            if (valid) return valid;
+            console.error(`"${answer}" is not a valid email address. Press Enter to keep ${onlyEmail}.`);
+        }
     }
 
     console.log("Saved sessions:");
@@ -65,8 +80,8 @@ export async function selectEmail(index: SessionIndex, explicitEmail: string | n
             return savedEmails[selected - 1];
         }
 
-        const normalizedEmail = normalizeEmail(trimmed);
-        if (normalizedEmail) return normalizedEmail;
-        console.error("Please choose a valid number or provide an email.");
+        const valid = normalizeAndValidate(trimmed);
+        if (valid) return valid;
+        console.error("Please choose a valid number or provide a valid email address.");
     }
 }
