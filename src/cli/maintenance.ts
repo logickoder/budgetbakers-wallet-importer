@@ -67,29 +67,16 @@ function printRecords(heading: string, filtered: ListedRecord[]): void {
     }
 }
 
-async function runRollbackImport(params: {
+async function confirmAndDeleteRecords(params: {
     couch: AxiosInstance;
-    options: RunOptions;
+    records: ListedRecord[];
+    yes: boolean;
     ask: (question: string) => Promise<string>;
-    log: Logger;
-    listRecordsByBatch: (couch: AxiosInstance, batchId: string) => Promise<ListedRecord[]>;
     deleteRecords: (couch: AxiosInstance, docs: RecordDocRef[]) => Promise<BulkResult[]>;
 }): Promise<number> {
-    const { couch, options, ask, log, listRecordsByBatch, deleteRecords } = params;
-    const batchId = options.rollbackImportId as string;
+    const { couch, records, yes, ask, deleteRecords } = params;
 
-    console.log(`Looking up records for import batch ${batchId}...`);
-    const records = await listRecordsByBatch(couch, batchId);
-    log("Batch records fetched", { batchId, fetchedCount: records.length });
-
-    if (!records.length) {
-        console.log("No records found for that batch id.");
-        return 0;
-    }
-
-    printRecords(`Records tagged with batch ${batchId} (${records.length}):`, records);
-
-    if (!options.yes) {
+    if (!yes) {
         const confirm = await ask(
             `\nDelete these ${records.length} records permanently? Type DELETE to continue: `
         );
@@ -112,6 +99,30 @@ async function runRollbackImport(params: {
         return 1;
     }
     return 0;
+}
+
+async function runRollbackImport(params: {
+    couch: AxiosInstance;
+    options: RunOptions;
+    ask: (question: string) => Promise<string>;
+    log: Logger;
+    listRecordsByBatch: (couch: AxiosInstance, batchId: string) => Promise<ListedRecord[]>;
+    deleteRecords: (couch: AxiosInstance, docs: RecordDocRef[]) => Promise<BulkResult[]>;
+}): Promise<number> {
+    const { couch, options, ask, log, listRecordsByBatch, deleteRecords } = params;
+    const batchId = options.rollbackImportId as string;
+
+    console.log(`Looking up records for import batch ${batchId}...`);
+    const records = await listRecordsByBatch(couch, batchId);
+    log("Batch records fetched", { batchId, fetchedCount: records.length });
+
+    if (!records.length) {
+        console.log("No records found for that batch id.");
+        return 0;
+    }
+
+    printRecords(`Records tagged with batch ${batchId} (${records.length}):`, records);
+    return confirmAndDeleteRecords({ couch, records, yes: options.yes, ask, deleteRecords });
 }
 
 export async function runMaintenanceMode(params: RunMaintenanceModeParams): Promise<number | null> {
@@ -184,26 +195,11 @@ export async function runMaintenanceMode(params: RunMaintenanceModeParams): Prom
         return 0;
     }
 
-    if (!options.yes) {
-        const confirm = await ask(`\nDelete these ${filtered.length} records permanently? Type DELETE to continue: `);
-        if (confirm.trim() !== "DELETE") {
-            console.log("Rollback aborted.");
-            return 0;
-        }
-    }
-
-    console.log("\nDeleting records...");
-    const results = await deleteRecords(couch, filtered.map((entry) => entry.ref));
-    const { successCount, failed } = summarizeDeleteResults(results);
-
-    console.log(`✓ Deleted ${successCount} record(s)`);
-    if (failed.length > 0) {
-        console.log(`✗ Failed to delete ${failed.length} record(s)`);
-        for (const entry of failed) {
-            console.log(`  - ${entry.id}: ${entry.error} — ${entry.reason}`);
-        }
-        return 1;
-    }
-
-    return 0;
+    return confirmAndDeleteRecords({
+        couch,
+        records: filtered,
+        yes: options.yes,
+        ask,
+        deleteRecords,
+    });
 }

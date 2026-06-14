@@ -29,13 +29,8 @@ import {
 import { ask, selectEmail } from "./interaction.js";
 import { runMaintenanceMode } from "./maintenance.js";
 import { parseRunOptions } from "./options/index.js";
-import {
-    buildImportPreview,
-    makeRunId,
-    outputPaths,
-    printImportPreview,
-    resolveLookupData,
-} from "./run.js";
+import { buildImportPreview, printImportPreview } from "./preview.js";
+import { makeRunId, outputPaths, resolveLookupData } from "./run.js";
 
 async function main() {
     const options = parseRunOptions(process.argv.slice(2));

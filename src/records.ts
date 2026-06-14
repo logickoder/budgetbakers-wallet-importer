@@ -64,7 +64,6 @@ export interface WriteRecordsResult {
   results: BulkResult[];
   successCount: number;
   duplicateCount: number;
-  failureCount: number;
 }
 
 interface DesignDocView {
@@ -112,13 +111,6 @@ const REQUIRED_VIEWS: Record<string, string> = {
   [RECORDS_BY_IMPORT_BATCH_VIEW]: RECORDS_BY_IMPORT_BATCH_MAP,
 };
 
-/**
- * Stable namespace UUID used as the v5 namespace base for record id derivation.
- * Changing this value will invalidate idempotency for all batches ever written
- * by this tool — do not change it.
- */
-export const IMPORT_NAMESPACE = "617b1204-9ef6-4bfa-8b04-03d0d509d7db" as const;
-
 /** Record `type` values — both confirmed from real documents. */
 export const RECORD_TYPE = {
   INCOME: 0 as const,
@@ -153,9 +145,8 @@ export function makeImportBatchId(): string {
  * Same `batchId` + same identity ⇒ same `_id` (CouchDB rejects with 409).
  * Different `batchId` ⇒ different `_id` (intentional re-import works).
  *
- * Namespace chaining: the batch id is itself used as a v5 namespace, so every
- * batch gets its own deterministic id space. `IMPORT_NAMESPACE` is unused at
- * derivation time but documents the tool's intent for future maintainers.
+ * The batch id itself is the v5 namespace, so every batch gets its own
+ * deterministic id space.
  */
 export function deriveRecordId(batchId: string, identity: RecordIdentity): string {
   const name = [
@@ -194,7 +185,7 @@ export async function writeRecords(
   batchId: string
 ): Promise<WriteRecordsResult> {
   if (!records.length) {
-    return { results: [], successCount: 0, duplicateCount: 0, failureCount: 0 };
+    return { results: [], successCount: 0, duplicateCount: 0 };
   }
 
   const now = new Date().toISOString();
@@ -257,7 +248,6 @@ export async function writeRecords(
     results: res.data,
     successCount,
     duplicateCount,
-    failureCount: hardFailures.length,
   };
 }
 
