@@ -29,6 +29,14 @@ function parseTimestamp(value: string): string | null {
     return new Date(ms).toISOString();
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function parseUuid(value: string): string | null {
+    const trimmed = value.trim().toLowerCase();
+    if (!UUID_PATTERN.test(trimmed)) return null;
+    return trimmed;
+}
+
 function parseLogLevel(value: string): LogLevelName | null {
     const normalized = value.trim().toLowerCase();
     if (normalized === "info" || normalized === "warn" || normalized === "error") {
@@ -51,14 +59,25 @@ function requireValue(args: string[], index: number, flag: string): string {
 }
 
 function validateOptions(options: RunOptions): void {
-    if (options.listLastRequested && options.rollbackLastRequested) {
-        throw new OptionsParseError("Use either --list-last or --rollback-last, not both.");
+    const maintenanceFlags = [
+        options.listLastRequested,
+        options.rollbackLastRequested,
+        options.rollbackImportRequested,
+    ].filter(Boolean).length;
+    if (maintenanceFlags > 1) {
+        throw new OptionsParseError(
+            "Use only one of --list-last, --rollback-last, or --rollback-import."
+        );
     }
 
     const hasRecordRange = options.startTimestamp !== null || options.endTimestamp !== null;
     const hasListOrRollback = options.listLastRequested || options.rollbackLastRequested;
     if (hasRecordRange && !hasListOrRollback) {
         throw new OptionsParseError("--start-ts and --end-ts can only be used with --list-last or --rollback-last.");
+    }
+
+    if (options.dryRun && options.rollbackImportRequested) {
+        throw new OptionsParseError("--dry-run cannot be combined with --rollback-import.");
     }
 
     if (
@@ -94,6 +113,14 @@ function parseIsoTimestamp(value: string, flag: "--start-ts" | "--end-ts"): stri
     return parsed;
 }
 
+function parseUuidArg(value: string, flag: "--rollback-import" | "--batch-id"): string {
+    const parsed = parseUuid(value);
+    if (!parsed) {
+        throw new OptionsParseError(`Invalid ${flag}. Expected a UUID.`);
+    }
+    return parsed;
+}
+
 export function parseRunOptionsOrThrow(args: string[]): RunOptions {
     const options: RunOptions = {
         debug: true,
@@ -108,6 +135,10 @@ export function parseRunOptionsOrThrow(args: string[]): RunOptions {
         rollbackLastRecords: 0,
         startTimestamp: null,
         endTimestamp: null,
+        rollbackImportRequested: false,
+        rollbackImportId: null,
+        batchId: null,
+        dryRun: false,
     };
 
     for (let i = 0; i < args.length; i++) {
@@ -161,6 +192,23 @@ export function parseRunOptionsOrThrow(args: string[]): RunOptions {
         } else if (arg === "--csv") {
             options.csvPath = requireValue(args, i, "--csv");
             i += 1;
+        } else if (arg.startsWith("--rollback-import=")) {
+            options.rollbackImportRequested = true;
+            options.rollbackImportId = parseUuidArg(getInlineValue(arg), "--rollback-import");
+        } else if (arg === "--rollback-import") {
+            options.rollbackImportRequested = true;
+            options.rollbackImportId = parseUuidArg(
+                requireValue(args, i, "--rollback-import"),
+                "--rollback-import"
+            );
+            i += 1;
+        } else if (arg.startsWith("--batch-id=")) {
+            options.batchId = parseUuidArg(getInlineValue(arg), "--batch-id");
+        } else if (arg === "--batch-id") {
+            options.batchId = parseUuidArg(requireValue(args, i, "--batch-id"), "--batch-id");
+            i += 1;
+        } else if (arg === "--dry-run" || arg === "--validate") {
+            options.dryRun = true;
         }
     }
 

@@ -23,11 +23,28 @@
  * - `latitude/longitude/accuracy/warrantyInMonth/suggestedEnvelopeId` always 0
  * - `photos/refObjects` always []
  * - `labels`          always [] unless HashTags are attached
+ *
+ * ## Tool-only fields
+ * - `importBatchId`   set by this importer on every record it writes. Used to
+ *                     locate records for batch rollback. The BudgetBakers app
+ *                     ignores unknown CouchDB fields.
+ *
+ * ## Idempotency
+ * Record `_id` is derived with UUIDv5(namespace=batchId, name=row identity)
+ * instead of a random UUIDv4. Re-running the same CSV under the same batch id
+ * produces the same `_id` for each row, so CouchDB rejects duplicates with a
+ * 409 `conflict`. Different batch id = different `_id`, so an intentional
+ * re-import is still possible.
  */
 
-import { v4 as uuidv4 } from "uuid";
+import { v4 as uuidv4, v5 as uuidv5 } from "uuid";
 import { isAxiosError, type AxiosInstance } from "axios";
-import type { BulkResult, NewRecord, WalletRecord } from "./types.js";
+import type {
+  BulkResult,
+  NewRecord,
+  RecordIdentity,
+  WalletRecord,
+} from "./types.js";
 
 export interface RecordDocRef {
   _id: string;
@@ -40,6 +57,14 @@ export interface ListedRecord {
   recordDate: string;
   amount: number;
   accountId: string;
+  importBatchId: string | null;
+}
+
+export interface WriteRecordsResult {
+  results: BulkResult[];
+  successCount: number;
+  duplicateCount: number;
+  failureCount: number;
 }
 
 interface DesignDocView {
@@ -62,6 +87,7 @@ interface ViewRow<TDoc> {
 
 const RECORDS_VIEW_DESIGN_ID = "_design/budgetbakers_wallet_importer";
 const RECORDS_BY_CREATED_VIEW = "records_by_reserved_created_at_v1";
+const RECORDS_BY_IMPORT_BATCH_VIEW = "records_by_import_batch_v1";
 
 const RECORDS_BY_CREATED_MAP = String.raw`function(doc) {
   if (!doc || typeof doc._id !== "string") return;
@@ -71,6 +97,27 @@ const RECORDS_BY_CREATED_MAP = String.raw`function(doc) {
 
   emit(doc.reservedCreatedAt, null);
 }`;
+
+const RECORDS_BY_IMPORT_BATCH_MAP = String.raw`function(doc) {
+  if (!doc || typeof doc._id !== "string") return;
+  if (doc._id.indexOf("Record_") !== 0) return;
+  if (doc._deleted === true) return;
+  if (typeof doc.importBatchId !== "string") return;
+
+  emit(doc.importBatchId, null);
+}`;
+
+const REQUIRED_VIEWS: Record<string, string> = {
+  [RECORDS_BY_CREATED_VIEW]: RECORDS_BY_CREATED_MAP,
+  [RECORDS_BY_IMPORT_BATCH_VIEW]: RECORDS_BY_IMPORT_BATCH_MAP,
+};
+
+/**
+ * Stable namespace UUID used as the v5 namespace base for record id derivation.
+ * Changing this value will invalidate idempotency for all batches ever written
+ * by this tool — do not change it.
+ */
+export const IMPORT_NAMESPACE = "617b1204-9ef6-4bfa-8b04-03d0d509d7db" as const;
 
 /** Record `type` values — both confirmed from real documents. */
 export const RECORD_TYPE = {
@@ -95,41 +142,75 @@ export const CSV_PAYMENT_TYPE_MAP: Record<string, number> = {
   // Add more as encountered in other CSV exports
 };
 
+/** Generates a fresh import batch id (UUIDv4). */
+export function makeImportBatchId(): string {
+  return uuidv4();
+}
+
+/**
+ * Derives the CouchDB `_id` for a record from its identity within a batch.
+ *
+ * Same `batchId` + same identity ⇒ same `_id` (CouchDB rejects with 409).
+ * Different `batchId` ⇒ different `_id` (intentional re-import works).
+ *
+ * Namespace chaining: the batch id is itself used as a v5 namespace, so every
+ * batch gets its own deterministic id space. `IMPORT_NAMESPACE` is unused at
+ * derivation time but documents the tool's intent for future maintainers.
+ */
+export function deriveRecordId(batchId: string, identity: RecordIdentity): string {
+  const name = [
+    identity.accountId,
+    identity.recordDate,
+    identity.amount,
+    identity.type,
+    identity.note,
+    identity.payee,
+    identity.transfer ? "1" : "0",
+  ].join("|");
+  return `Record_${uuidv5(name, batchId)}`;
+}
+
+function isDuplicateResult(result: BulkResult): boolean {
+  return result.error === "conflict";
+}
+
 /**
  * Writes an array of records to CouchDB in a single `_bulk_docs` call.
  *
  * Auto-fills all `reserved*`, `recordState`, and default zero/empty fields
  * so callers only need to provide business data via `NewRecord`.
  *
- * @throws {Error} When CouchDB rejects any record.
+ * Each record's `_id` is derived from `batchId` + row identity (see
+ * `deriveRecordId`). Re-running the same input under the same batch produces
+ * the same `_id`s, so CouchDB returns 409 `conflict` for already-written rows
+ * — those are surfaced as "duplicate" in the result, not thrown.
  *
- * @example
- * const results = await writeRecords(couch, userId, [
- *   {
- *     accountId:   "-Account_15230f1e-...",
- *     currencyId:  "-Currency_38481cb0-...",
- *     categoryId:  "-Category_8013274a-...",
- *     amount:      5375,          // 53.75 NGN × 100
- *     type:        RECORD_TYPE.EXPENSE,
- *     note:        "Stamp Duty",
- *     recordDate:  "2026-01-27T02:31:00.000+00:00",
- *     paymentType: PAYMENT_TYPE.TRANSFER,
- *     transfer:    false,
- *   },
- * ]);
+ * @throws {Error} When CouchDB rejects a record with a non-conflict error.
  */
 export async function writeRecords(
   couch: AxiosInstance,
   userId: string,
-  records: NewRecord[]
-): Promise<BulkResult[]> {
-  if (!records.length) return [];
+  records: NewRecord[],
+  batchId: string
+): Promise<WriteRecordsResult> {
+  if (!records.length) {
+    return { results: [], successCount: 0, duplicateCount: 0, failureCount: 0 };
+  }
 
   const now = new Date().toISOString();
 
   const docs: WalletRecord[] = records.map((r) => ({
     ...r,
-    _id: `Record_${uuidv4()}`,
+    _id: deriveRecordId(batchId, {
+      accountId: r.accountId,
+      recordDate: r.recordDate,
+      amount: r.amount,
+      type: r.type,
+      note: r.note,
+      payee: r.payee ?? "",
+      transfer: r.transfer,
+    }),
+    importBatchId: batchId,
     refAmount: r.amount,      // always same as amount
     recordState: 1 as const,
     categoryChanged: true,
@@ -151,15 +232,33 @@ export async function writeRecords(
 
   const res = await couch.post<BulkResult[]>("/_bulk_docs", { docs });
 
-  const failed = res.data.filter((r) => r.error);
-  if (failed.length) {
+  let successCount = 0;
+  let duplicateCount = 0;
+  const hardFailures: BulkResult[] = [];
+
+  for (const result of res.data) {
+    if (result.ok) {
+      successCount += 1;
+    } else if (isDuplicateResult(result)) {
+      duplicateCount += 1;
+    } else if (result.error) {
+      hardFailures.push(result);
+    }
+  }
+
+  if (hardFailures.length) {
     throw new Error(
-      `${failed.length} record(s) rejected by CouchDB:\n` +
-      failed.map((r) => `  ${r.id}: ${r.error} — ${r.reason}`).join("\n")
+      `${hardFailures.length} record(s) rejected by CouchDB:\n` +
+      hardFailures.map((r) => `  ${r.id}: ${r.error} — ${r.reason}`).join("\n")
     );
   }
 
-  return res.data;
+  return {
+    results: res.data,
+    successCount,
+    duplicateCount,
+    failureCount: hardFailures.length,
+  };
 }
 
 /**
@@ -184,9 +283,9 @@ function buildRecordsViewDoc(existing: DesignDoc | null): DesignDoc {
     language: "javascript",
     views: {
       ...(existing?.views ?? {}),
-      [RECORDS_BY_CREATED_VIEW]: {
-        map: RECORDS_BY_CREATED_MAP,
-      },
+      ...Object.fromEntries(
+        Object.entries(REQUIRED_VIEWS).map(([name, map]) => [name, { map }])
+      ),
     },
   };
 
@@ -194,7 +293,7 @@ function buildRecordsViewDoc(existing: DesignDoc | null): DesignDoc {
   return next;
 }
 
-async function ensureRecordsCreatedView(couch: AxiosInstance): Promise<void> {
+async function ensureRecordsViews(couch: AxiosInstance): Promise<void> {
   let existing: DesignDoc | null = null;
 
   try {
@@ -206,9 +305,10 @@ async function ensureRecordsCreatedView(couch: AxiosInstance): Promise<void> {
     }
   }
 
-  const existingMap = existing?.views?.[RECORDS_BY_CREATED_VIEW]?.map;
-  const needsUpsert = !existing || existingMap !== RECORDS_BY_CREATED_MAP;
-  if (!needsUpsert) return;
+  const needsUpsert = Object.entries(REQUIRED_VIEWS).some(
+    ([name, map]) => existing?.views?.[name]?.map !== map
+  );
+  if (!needsUpsert && existing) return;
 
   const next = buildRecordsViewDoc(existing);
   await couch.put(`/${RECORDS_VIEW_DESIGN_ID}`, next);
@@ -227,6 +327,20 @@ async function fetchRecordsViewRows(couch: AxiosInstance, limit: number): Promis
   return res.data.rows;
 }
 
+function toListedRecord(row: ViewRow<WalletRecord>): ListedRecord {
+  return {
+    ref: {
+      _id: row.id,
+      _rev: row.doc?._rev as string,
+    },
+    createdAt: row.doc?.reservedCreatedAt ?? "",
+    recordDate: row.doc?.recordDate ?? "",
+    amount: row.doc?.amount ?? 0,
+    accountId: row.doc?.accountId ?? "",
+    importBatchId: typeof row.doc?.importBatchId === "string" ? row.doc.importBatchId : null,
+  };
+}
+
 /**
  * Fetches the last N records sorted by `reservedCreatedAt` descending.
  */
@@ -234,21 +348,34 @@ export async function listLastRecords(
   couch: AxiosInstance,
   limit: number
 ): Promise<ListedRecord[]> {
-  await ensureRecordsCreatedView(couch);
+  await ensureRecordsViews(couch);
   const rows = await fetchRecordsViewRows(couch, limit);
 
   return rows
     .filter((row) => row.id.startsWith("Record_") && typeof row.doc?._rev === "string")
-    .map((row) => ({
-      ref: {
-        _id: row.id,
-        _rev: row.doc?._rev as string,
-      },
-      createdAt: row.doc?.reservedCreatedAt ?? "",
-      recordDate: row.doc?.recordDate ?? "",
-      amount: row.doc?.amount ?? 0,
-      accountId: row.doc?.accountId ?? "",
-    }));
+    .map(toListedRecord);
+}
+
+/**
+ * Fetches all records tagged with the given `importBatchId`.
+ * Returns an empty array when no records match.
+ */
+export async function listRecordsByBatch(
+  couch: AxiosInstance,
+  batchId: string
+): Promise<ListedRecord[]> {
+  await ensureRecordsViews(couch);
+
+  const params = new URLSearchParams();
+  params.set("include_docs", "true");
+  params.set("key", JSON.stringify(batchId));
+
+  const path = `/${RECORDS_VIEW_DESIGN_ID}/_view/${RECORDS_BY_IMPORT_BATCH_VIEW}?${params.toString()}`;
+  const res = await couch.get<{ rows: Array<ViewRow<WalletRecord>> }>(path);
+
+  return res.data.rows
+    .filter((row) => row.id.startsWith("Record_") && typeof row.doc?._rev === "string")
+    .map(toListedRecord);
 }
 
 export async function deleteRecords(

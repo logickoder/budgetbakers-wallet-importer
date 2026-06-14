@@ -91,6 +91,40 @@ npm start -- --email you@example.com --csv ./transactions.csv --yes
 - `--csv` skips CSV path prompt
 - `--yes` skips final write confirmation prompt
 
+Dry-run / validation mode parses the CSV, resolves accounts and categories
+against your CouchDB lookups, prints the preview, and exits without writing:
+
+```bash
+npm start -- --csv ./transactions.csv --dry-run
+# alias:
+npm start -- --csv ./transactions.csv --validate
+```
+
+### Import batches and duplicate prevention
+
+Every run generates a fresh **import batch id** (a UUID). It is:
+
+- Printed to the terminal after the preview block
+- Tagged on every written record via the `importBatchId` field
+- Used to derive each record's CouchDB `_id` via UUIDv5
+
+This gives you two things for free:
+
+1. **Re-running the same CSV under the same batch id is safe.** Identical rows
+   produce identical `_id`s, so CouchDB rejects them with a 409 `conflict` and
+   the importer reports them as duplicates instead of writing them again.
+2. **Targeted rollback.** You can delete every record from a specific run with
+   `--rollback-import <batch-id>` — no time-window guessing.
+
+Reuse a batch id when you need to resume a partial import:
+
+```bash
+npm start -- --csv ./transactions.csv --batch-id <uuid-from-previous-run>
+```
+
+A different invocation without `--batch-id` gets a new id, so an intentional
+re-import of the same CSV is still possible.
+
 Rollback helpers:
 
 ```bash
@@ -105,10 +139,14 @@ npm start -- --rollback-last 20
 
 # Delete (rollback) the last 20 records in a timestamp window
 npm start -- --rollback-last 20 --start-ts "2026-03-23T08:00:00Z" --end-ts "2026-03-23T09:00:00Z"
+
+# Delete (rollback) every record tagged with a specific import batch id
+npm start -- --rollback-import 617b1204-9ef6-4bfa-8b04-03d0d509d7db
 ```
 
 - `--list-last <count>` lists recent records and exits
 - `--rollback-last <count>` lists then deletes those records after confirmation
+- `--rollback-import <id>` deletes every record tagged with that import batch id
 - `--start-ts <timestamp>` optional lower bound for filtering by `created` time
 - `--end-ts <timestamp>` optional upper bound for filtering by `created` time
 - timestamp filters are applied after fetching the requested last `<count>` records
@@ -245,6 +283,16 @@ Parsing CSV...
   Skipped reasons:
     [2×] Unknown category: "Food" — check app for exact name
 
+Preview:
+  Per-account totals:
+    First Bank · 47 rows · net -125300.50
+    Palmpay    · 6 rows  · net  300000.00
+  First 5 of 53 record(s):
+    2026-01-27T02:31:00.000+01:00 | First Bank | -53.75 | Charges & Fees | Stamp Duty
+    ...
+
+Import batch id: 617b1204-9ef6-4bfa-8b04-03d0d509d7db
+
 Write 53 records to BudgetBakers? [y/N] y
 
 Writing records...
@@ -255,6 +303,7 @@ Writing records...
 
 Success CSV → ~/transactions_success.csv
 Failure CSV → ~/transactions_failure.csv
+Rollback this batch: --rollback-import 617b1204-9ef6-4bfa-8b04-03d0d509d7db
 ```
 
 ---
@@ -356,6 +405,8 @@ Full technical details including all confirmed endpoint shapes, field values, an
 
 - **CouchDB only** — this writes directly to the database. If BudgetBakers changes their database infrastructure, the
   tool will need updating.
-- **No duplicate detection** — running the same CSV twice will create duplicate records. Use the `_success.csv` output
-  to track what has already been imported.
-- **No edit flow** — record updates are not supported. Rollback supports delete-only for targeted recent records.
+- **Duplicate detection is batch-scoped** — re-running the same CSV under the same `--batch-id` is safe (duplicates are
+  rejected by CouchDB). Re-running without `--batch-id` generates a new batch id and will create duplicates by design,
+  so you can intentionally re-import the same data when needed.
+- **No edit flow** — record updates are not supported. Rollback supports delete-only, either by recent-record window or
+  by import batch id.

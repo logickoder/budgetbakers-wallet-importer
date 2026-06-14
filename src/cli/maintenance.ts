@@ -4,6 +4,7 @@ import type { Logger } from "../logger.js";
 import {
     deleteRecords as deleteRecordsFromCouch,
     listLastRecords as listLastRecordsFromCouch,
+    listRecordsByBatch as listRecordsByBatchFromCouch,
 } from "../records.js";
 import type { ListedRecord, RecordDocRef } from "../records.js";
 import type { BulkResult } from "../types.js";
@@ -20,6 +21,7 @@ interface RunMaintenanceModeParams {
     ask: (question: string) => Promise<string>;
     log: Logger;
     listLastRecords?: (couch: AxiosInstance, limit: number) => Promise<ListedRecord[]>;
+    listRecordsByBatch?: (couch: AxiosInstance, batchId: string) => Promise<ListedRecord[]>;
     deleteRecords?: (couch: AxiosInstance, docs: RecordDocRef[]) => Promise<BulkResult[]>;
 }
 
@@ -53,15 +55,63 @@ export function summarizeDeleteResults(results: BulkResult[]): {
     };
 }
 
-function printRecords(requestedCount: number, filtered: ListedRecord[]): void {
-    console.log(`\nLast ${requestedCount} records (showing ${filtered.length} after created-time filter):`);
+function printRecords(heading: string, filtered: ListedRecord[]): void {
+    console.log(`\n${heading}`);
     for (let i = 0; i < filtered.length; i++) {
         const doc = filtered[i];
+        const batchTag = doc.importBatchId ? ` | batch=${doc.importBatchId}` : "";
         console.log(
             `  [${i + 1}] ${doc.ref._id} | created=${doc.createdAt} | `
-            + `recordDate=${doc.recordDate} | amount=${doc.amount} | account=${doc.accountId}`
+            + `recordDate=${doc.recordDate} | amount=${doc.amount} | account=${doc.accountId}${batchTag}`
         );
     }
+}
+
+async function runRollbackImport(params: {
+    couch: AxiosInstance;
+    options: RunOptions;
+    ask: (question: string) => Promise<string>;
+    log: Logger;
+    listRecordsByBatch: (couch: AxiosInstance, batchId: string) => Promise<ListedRecord[]>;
+    deleteRecords: (couch: AxiosInstance, docs: RecordDocRef[]) => Promise<BulkResult[]>;
+}): Promise<number> {
+    const { couch, options, ask, log, listRecordsByBatch, deleteRecords } = params;
+    const batchId = options.rollbackImportId as string;
+
+    console.log(`Looking up records for import batch ${batchId}...`);
+    const records = await listRecordsByBatch(couch, batchId);
+    log("Batch records fetched", { batchId, fetchedCount: records.length });
+
+    if (!records.length) {
+        console.log("No records found for that batch id.");
+        return 0;
+    }
+
+    printRecords(`Records tagged with batch ${batchId} (${records.length}):`, records);
+
+    if (!options.yes) {
+        const confirm = await ask(
+            `\nDelete these ${records.length} records permanently? Type DELETE to continue: `
+        );
+        if (confirm.trim() !== "DELETE") {
+            console.log("Rollback aborted.");
+            return 0;
+        }
+    }
+
+    console.log("\nDeleting records...");
+    const results = await deleteRecords(couch, records.map((entry) => entry.ref));
+    const { successCount, failed } = summarizeDeleteResults(results);
+
+    console.log(`✓ Deleted ${successCount} record(s)`);
+    if (failed.length > 0) {
+        console.log(`✗ Failed to delete ${failed.length} record(s)`);
+        for (const entry of failed) {
+            console.log(`  - ${entry.id}: ${entry.error} — ${entry.reason}`);
+        }
+        return 1;
+    }
+    return 0;
 }
 
 export async function runMaintenanceMode(params: RunMaintenanceModeParams): Promise<number | null> {
@@ -71,8 +121,13 @@ export async function runMaintenanceMode(params: RunMaintenanceModeParams): Prom
         ask,
         log,
         listLastRecords = listLastRecordsFromCouch,
+        listRecordsByBatch = listRecordsByBatchFromCouch,
         deleteRecords = deleteRecordsFromCouch,
     } = params;
+
+    if (options.rollbackImportRequested) {
+        return runRollbackImport({ couch, options, ask, log, listRecordsByBatch, deleteRecords });
+    }
 
     if (!options.listLastRequested && !options.rollbackLastRequested) {
         return null;
@@ -120,7 +175,10 @@ export async function runMaintenanceMode(params: RunMaintenanceModeParams): Prom
         return 0;
     }
 
-    printRecords(requestedCount, filtered);
+    printRecords(
+        `Last ${requestedCount} records (showing ${filtered.length} after created-time filter):`,
+        filtered
+    );
 
     if (!rollbackMode) {
         return 0;

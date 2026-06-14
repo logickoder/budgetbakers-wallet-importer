@@ -196,8 +196,31 @@ All fields confirmed from 20+ real Record documents. No fields are assumed.
   reservedAuthorId:    "<userId>",
   reservedCreatedAt:   "<ISO timestamp>",
   reservedUpdatedAt:   "<ISO timestamp>",
+
+  // Tool-only — set by this importer, ignored by the BudgetBakers app
+  importBatchId:       "<uuid>",             // groups every record written in one run
 }
 ```
+
+### `_id` derivation (importer-only)
+
+The importer does NOT use `uuidv4` for `_id`. It uses UUIDv5 with the import
+batch id as the namespace and a row-identity string as the name:
+
+```
+name = `${accountId}|${recordDate}|${amount}|${type}|${note}|${payee}|${transferFlag}`
+_id  = "Record_" + uuidv5(name, batchId)
+```
+
+Same `batchId` + same identity ⇒ same `_id` ⇒ CouchDB returns 409 `conflict`.
+This is how `--batch-id` makes re-runs idempotent.
+
+### `importBatchId` (tool-only field)
+
+`importBatchId` is set on every record this importer writes. The BudgetBakers
+app ignores unknown CouchDB fields, so this is invisible in the UI. It exists
+to support `--rollback-import <batch-id>`, which deletes every record carrying
+that tag via the `records_by_import_batch_v1` view.
 
 ### `type` values
 

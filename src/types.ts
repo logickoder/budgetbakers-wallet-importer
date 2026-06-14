@@ -84,6 +84,10 @@ export interface WalletRecord {
   transfer: boolean;
   transferId?: string;    // shared UUID linking both legs of a transfer
   transferAccountId?: string;    // OTHER account "-Account_<uuid>" — only on transfers
+  // Tool-only field: groups records written together in one importer run so
+  // they can be located later for batch rollback. Never read or written by
+  // the BudgetBakers app — it ignores unknown CouchDB fields.
+  importBatchId?: string;
   categoryChanged: boolean;   // always true on real records
   latitude: number;    // always 0.0
   longitude: number;    // always 0.0
@@ -116,6 +120,21 @@ export interface NewRecord {
   transfer: boolean;
   transferId?: string;
   transferAccountId?: string;
+}
+
+/**
+ * Inputs used to derive a deterministic Record `_id` (UUIDv5) within a batch.
+ * Same batchId + same row identity ⇒ same `_id` ⇒ CouchDB rejects with 409 on
+ * re-import, giving free duplicate prevention for a single batch.
+ */
+export interface RecordIdentity {
+  accountId: string;
+  recordDate: string;
+  amount: number;
+  type: 0 | 1;
+  note: string;
+  payee: string;
+  transfer: boolean;
 }
 
 /** CouchDB `_bulk_docs` response entry. */

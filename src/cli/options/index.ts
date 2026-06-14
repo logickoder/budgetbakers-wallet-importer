@@ -11,6 +11,9 @@ function printHelp(): void {
     console.log("  --csv <path>           Use this CSV path (skip CSV path prompt)");
     console.log("  --list-last <count>    List the most recently created Record docs");
     console.log("  --rollback-last <count> Delete the most recently created Record docs");
+    console.log("  --rollback-import <id> Delete all Record docs tagged with this import batch id");
+    console.log("  --batch-id <uuid>      Reuse an existing batch id for write (idempotent re-runs)");
+    console.log("  --dry-run, --validate  Parse + preview only, skip the CouchDB write");
     console.log("  --start-ts <iso>       Filter fetched last-N records by created time lower bound");
     console.log("  --end-ts <iso>         Filter fetched last-N records by created time upper bound");
     console.log("  --yes, -y              Auto-confirm record write prompt");

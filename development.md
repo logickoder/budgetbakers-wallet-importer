@@ -389,14 +389,29 @@ The original CSV is read-only. Output goes to `_success.csv` and `_failure.csv` 
 
 `_failure.csv` is always written in the same format as the input CSV (with an added `reason` column that `parseCsv` ignores). The user should be able to fix the issues, remove the `reason` column, and re-run the file without any reformatting.
 
-### No duplicate detection — document this clearly
+### Duplicate detection is batch-scoped
 
-The tool does not check whether a record already exists before writing. Running the same file twice creates duplicates. This is a known limitation documented in `README.md` and must not be silently "fixed" with a half-baked deduplication scheme that could produce false negatives.
+The tool prevents duplicates within a single import batch via deterministic
+`_id` derivation:
 
-If deduplication is added in the future, it must be:
-1. Based on a confirmed field (e.g. matching `recordDate` + `amount` + `accountId`)
-2. Opt-in via a CLI flag, not the default behaviour
-3. Documented in `README.md` and `docs/api.md`
+- Every run generates a UUIDv4 batch id (or reuses one supplied via `--batch-id`).
+- Each record's `_id` is `Record_<uuidv5(rowIdentity, batchId)>`.
+- Re-running the same CSV under the same batch id produces the same `_id`s, so
+  CouchDB returns 409 `conflict`. The importer surfaces these as duplicates,
+  not failures.
+
+This satisfies the three rules originally written here:
+1. The derivation key is built from confirmed fields (`accountId`, `recordDate`,
+   `amount`, `type`, `note`, `payee`, `transfer`).
+2. Cross-run dedup is opt-in via `--batch-id`. Without it, every run gets a
+   fresh batch id and an intentional re-import still works.
+3. Behaviour is documented in `README.md` (Import batches section) and
+   `api.md` (`_id` derivation + `importBatchId`).
+
+Do not silently widen the dedup beyond a single batch id. Cross-batch
+deduplication would require committing to "same row identity = same record
+forever", which is a semantic the importer does not own — the user controls
+re-import intent via `--batch-id`.
 
 ### Amounts are always positive in minor units
 

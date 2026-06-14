@@ -12,7 +12,7 @@ import { buildCouchClient, buildLookupMapsFromData, fetchLookupData } from "../c
 import type { CsvRow, SkippedRow } from "../csv.js";
 import { convertRows, parseCsv, rowsToCsv, skippedRowsToCsv } from "../csv.js";
 import { createLogger } from "../logger.js";
-import { writeRecords } from "../records.js";
+import { makeImportBatchId, writeRecords } from "../records.js";
 import type { UserSession } from "../types.js";
 import {
     loadLookupCache,
@@ -29,7 +29,13 @@ import {
 import { ask, selectEmail } from "./interaction.js";
 import { runMaintenanceMode } from "./maintenance.js";
 import { parseRunOptions } from "./options/index.js";
-import { makeRunId, outputPaths, resolveLookupData } from "./run.js";
+import {
+    buildImportPreview,
+    makeRunId,
+    outputPaths,
+    printImportPreview,
+    resolveLookupData,
+} from "./run.js";
 
 async function main() {
     const options = parseRunOptions(process.argv.slice(2));
@@ -212,6 +218,26 @@ async function main() {
         process.exit(0);
     }
 
+    const preview = buildImportPreview(records, lookup.maps);
+    printImportPreview(preview);
+
+    const batchId = options.batchId ?? makeImportBatchId();
+    console.log(`\nImport batch id: ${batchId}`);
+    if (options.batchId) {
+        console.log("  (reusing supplied batch id — duplicate rows will be skipped)");
+    }
+    log("Import batch id", { batchId, reused: Boolean(options.batchId) });
+
+    if (options.dryRun) {
+        console.log("\nDry run — no records written.");
+        if (skipped.length > 0) {
+            fs.writeFileSync(failurePath, skippedRowsToCsv(skipped), "utf8");
+            console.log(`Failure CSV → ${failurePath}`);
+        }
+        log("Dry run complete", { records: records.length, skipped: skipped.length });
+        process.exit(0);
+    }
+
     if (!options.yes) {
         console.log();
         const confirm = await ask(`Write ${records.length} records to BudgetBakers? [y/N] `);
@@ -225,30 +251,37 @@ async function main() {
     }
 
     console.log("\nWriting records...");
-    log("CouchDB bulk write started", { recordCount: records.length });
+    log("CouchDB bulk write started", { recordCount: records.length, batchId });
     const writeStart = Date.now();
-    const results = await writeRecords(couch, loginResult.userId, records);
+    const writeOutcome = await writeRecords(couch, loginResult.userId, records, batchId);
     log("Bulk write completed", {
-        results: results.length,
+        results: writeOutcome.results.length,
+        successCount: writeOutcome.successCount,
+        duplicateCount: writeOutcome.duplicateCount,
         durationMs: Date.now() - writeStart,
     });
 
     const successRows: CsvRow[] = [];
+    const duplicateRows: CsvRow[] = [];
     const writeFailures: SkippedRow[] = [];
 
-    for (let i = 0; i < results.length; i++) {
-        if (results[i].ok) {
+    for (let i = 0; i < writeOutcome.results.length; i++) {
+        const result = writeOutcome.results[i];
+        if (result.ok) {
             successRows.push(originalRows[i]);
+        } else if (result.error === "conflict") {
+            duplicateRows.push(originalRows[i]);
         } else {
             writeFailures.push({
                 row: originalRows[i],
-                reason: `CouchDB rejected: ${results[i].error} — ${results[i].reason}`,
+                reason: `CouchDB rejected: ${result.error} — ${result.reason}`,
             });
         }
     }
 
     log("Write split summary", {
         success: successRows.length,
+        duplicates: duplicateRows.length,
         writeFailures: writeFailures.length,
     });
 
@@ -267,6 +300,9 @@ async function main() {
 
     console.log();
     console.log(`✓ ${successRows.length} records written successfully`);
+    if (duplicateRows.length > 0) {
+        console.log(`↻ ${duplicateRows.length} duplicate(s) skipped (already in batch ${batchId})`);
+    }
 
     if (allFailures.length > 0) {
         console.log(`✗ ${allFailures.length} rows failed`);
@@ -277,9 +313,12 @@ async function main() {
     console.log(`Success CSV → ${successPath}`);
     console.log(`Failure CSV → ${failurePath}`);
     console.log(`Run log → ${logFilePath}`);
+    console.log(`Rollback this batch: --rollback-import ${batchId}`);
     log("Run completed", {
         successRows: successRows.length,
+        duplicateRows: duplicateRows.length,
         failureRows: allFailures.length,
+        batchId,
         logFilePath,
     });
 

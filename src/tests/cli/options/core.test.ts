@@ -33,7 +33,7 @@ test("parseRunOptionsOrThrow rejects conflicting maintenance flags", () => {
     assert.throws(
         () => parseRunOptionsOrThrow(["--list-last", "20", "--rollback-last", "20"]),
         (error: unknown) => error instanceof OptionsParseError
-            && error.message.includes("Use either --list-last or --rollback-last")
+            && error.message.includes("Use only one of --list-last, --rollback-last, or --rollback-import")
     );
 });
 
@@ -41,5 +41,51 @@ test("parseRunOptionsOrThrow emits help signal", () => {
     assert.throws(
         () => parseRunOptionsOrThrow(["--help"]),
         (error: unknown) => error instanceof OptionsParseError && error.code === "help"
+    );
+});
+
+test("parseRunOptionsOrThrow parses --rollback-import uuid", () => {
+    const id = "617b1204-9ef6-4bfa-8b04-03d0d509d7db";
+    const options = parseRunOptionsOrThrow(["--rollback-import", id, "--yes"]);
+
+    assert.equal(options.rollbackImportRequested, true);
+    assert.equal(options.rollbackImportId, id);
+    assert.equal(options.yes, true);
+});
+
+test("parseRunOptionsOrThrow rejects invalid --rollback-import value", () => {
+    assert.throws(
+        () => parseRunOptionsOrThrow(["--rollback-import", "not-a-uuid"]),
+        (error: unknown) => error instanceof OptionsParseError
+            && error.message.includes("Invalid --rollback-import")
+    );
+});
+
+test("parseRunOptionsOrThrow rejects --rollback-import combined with --rollback-last", () => {
+    const id = "617b1204-9ef6-4bfa-8b04-03d0d509d7db";
+    assert.throws(
+        () => parseRunOptionsOrThrow(["--rollback-import", id, "--rollback-last", "5"]),
+        (error: unknown) => error instanceof OptionsParseError
+            && error.message.includes("Use only one of")
+    );
+});
+
+test("parseRunOptionsOrThrow parses --batch-id", () => {
+    const id = "617b1204-9ef6-4bfa-8b04-03d0d509d7db";
+    const options = parseRunOptionsOrThrow(["--batch-id", id]);
+    assert.equal(options.batchId, id);
+});
+
+test("parseRunOptionsOrThrow accepts --dry-run and --validate alias", () => {
+    assert.equal(parseRunOptionsOrThrow(["--dry-run"]).dryRun, true);
+    assert.equal(parseRunOptionsOrThrow(["--validate"]).dryRun, true);
+});
+
+test("parseRunOptionsOrThrow rejects --dry-run combined with --rollback-import", () => {
+    const id = "617b1204-9ef6-4bfa-8b04-03d0d509d7db";
+    assert.throws(
+        () => parseRunOptionsOrThrow(["--dry-run", "--rollback-import", id]),
+        (error: unknown) => error instanceof OptionsParseError
+            && error.message.includes("--dry-run cannot be combined")
     );
 });

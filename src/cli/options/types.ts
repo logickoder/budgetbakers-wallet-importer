@@ -13,4 +13,8 @@ export interface RunOptions {
     rollbackLastRecords: number;
     startTimestamp: string | null;
     endTimestamp: string | null;
+    rollbackImportRequested: boolean;
+    rollbackImportId: string | null;
+    batchId: string | null;
+    dryRun: boolean;
 }
