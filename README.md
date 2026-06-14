@@ -29,9 +29,9 @@ every row can target a different account.
 ## Setup
 
 ```bash
-git clone <repo>
-cd budgetbakers
-npm install
+git clone https://github.com/logickoder/budgetbakers-wallet-importer.git
+cd budgetbakers-wallet-importer
+pnpm install   # or: npm install
 ```
 
 If published on npm, install globally:
@@ -39,6 +39,9 @@ If published on npm, install globally:
 ```bash
 npm install -g budgetbakers-wallet-importer
 ```
+
+> The repo ships with a `pnpm-lock.yaml`. `pnpm` is the canonical package
+> manager — `npm` works too, but expect lockfile noise if you mix them.
 
 ---
 
@@ -53,6 +56,25 @@ If installed globally from npm:
 ```bash
 budgetbakers-wallet-importer
 ```
+
+### CLI flag reference
+
+| Flag                       | Purpose                                                                  |
+| -------------------------- | ------------------------------------------------------------------------ |
+| `--email <email>`          | Use this email — skips email selection prompt                            |
+| `--csv <path>`             | Use this CSV path — skips the path prompt                                |
+| `--yes`, `-y`              | Auto-confirm the write prompt (and rollback prompts)                     |
+| `--dry-run`, `--validate`  | Parse + preview + exit. No CouchDB write.                                |
+| `--batch-id <uuid>`        | Reuse an existing import batch id (makes re-runs idempotent)             |
+| `--rollback-import <uuid>` | Delete every record tagged with that import batch id                     |
+| `--list-last <count>`      | List the N most recently created Record docs and exit                    |
+| `--rollback-last <count>`  | Delete the N most recently created Record docs (after confirmation)      |
+| `--start-ts <iso>`         | Lower bound when filtering `--list-last` / `--rollback-last` by created  |
+| `--end-ts <iso>`           | Upper bound for the same                                                 |
+| `--refresh-cache`          | Force a fresh lookup fetch from CouchDB instead of using the cache       |
+| `--debug` / `--no-debug`   | Toggle verbose console logs (debug on by default; file log always on)    |
+| `--log-level <level>`      | Minimum log level written to the run log file (`info`/`warn`/`error`)    |
+| `-h`, `--help`             | Print help and exit                                                      |
 
 Debug logging is enabled by default to help diagnose failures. You can disable it from run params:
 
@@ -256,6 +278,12 @@ After each run, two files are written alongside your input CSV:
 
 The failure file is already in the correct CSV format — fix the issues, rename it, and re-run it as the input.
 
+**Duplicate rows** (CouchDB 409 `conflict` because the same `_id` already
+exists in this batch) are reported in the console as `↻ N duplicate(s)
+skipped` and counted in the run log, but they are **not** written to either
+output CSV — they are neither new successes nor failures. Re-import them by
+running under a fresh batch id (drop `--batch-id`).
+
 ### Example terminal output
 
 ```
@@ -306,6 +334,22 @@ Failure CSV → ~/transactions_failure.csv
 Rollback this batch: --rollback-import 617b1204-9ef6-4bfa-8b04-03d0d509d7db
 ```
 
+Re-running the same CSV under the same batch id (idempotent retry):
+
+```
+npm start -- --csv ./transactions.csv \
+             --batch-id 617b1204-9ef6-4bfa-8b04-03d0d509d7db --yes
+
+...
+Import batch id: 617b1204-9ef6-4bfa-8b04-03d0d509d7db
+  (reusing supplied batch id — duplicate rows will be skipped)
+
+Writing records...
+
+✓ 0 records written successfully
+↻ 53 duplicate(s) skipped (already in batch 617b1204-9ef6-4bfa-8b04-03d0d509d7db)
+```
+
 ---
 
 ## Common errors
@@ -325,28 +369,36 @@ exact same `date` string.
 Your saved session token has expired. The tool handles this automatically — it clears the old token and triggers a new
 SSO email.
 
+**`↻ N duplicate(s) skipped (already in batch …)`**
+Not an error. Records with the same row identity have already been written
+under this batch id, so CouchDB rejected the duplicates. If you actually
+meant to write the rows again, drop `--batch-id` and re-run — a fresh batch
+id will produce fresh `_id`s.
+
 ---
 
 ## Project structure
 
 ```
-budgetbakers/
+budgetbakers-wallet-importer/
 ├── src/
 │   ├── cli/
 │   │   ├── index.ts       Main orchestration flow
 │   │   ├── interaction.ts Prompting and saved-email selection UX
-│   │   ├── maintenance.ts List/revert recent records flow
+│   │   ├── maintenance.ts List/rollback flows (last-N + by import batch)
 │   │   ├── options/
 │   │   │   ├── index.ts   CLI options entry + help/exit behavior
 │   │   │   ├── core.ts    Pure argument parsing and validation
 │   │   │   └── types.ts   Shared RunOptions interfaces
-│   │   ├── run.ts         Run helpers + cache/couch lookup resolver
+│   │   ├── preview.ts     Per-account preview builder + printer
+│   │   └── run.ts         Run id, output paths, cache/couch lookup resolver
 │   ├── auth.ts            Next-Auth SSO login flow
 │   ├── couch.ts           CouchDB client and runtime lookup maps
 │   ├── csv.ts             CSV parser, converter, and serialiser
 │   ├── date-time.ts       Local date parsing + ISO normalization
 │   ├── logger.ts          File/console logger with redaction and levels
-│   ├── records.ts         CouchDB _bulk_docs writer + recent-record listing/deletes
+│   ├── records.ts         _bulk_docs writer + UUIDv5 _id + batch views
+│   ├── utils.ts           Small shared helpers
 │   ├── security/
 │   │   └── tokens.ts      Token extraction/validation helpers
 │   ├── storage/
@@ -358,13 +410,18 @@ budgetbakers/
 │   ├── tests/
 │   │   ├── cli/
 │   │   │   ├── maintenance.test.ts
+│   │   │   ├── preview.test.ts
 │   │   │   ├── run.test.ts
-│   │   │   └── options/core.test.ts
+│   │   │   └── options/
+│   │   │       └── core.test.ts
 │   │   ├── csv.test.ts
-│   │   └── date-time.test.ts
-│   ├── types.ts           Shared TypeScript interfaces
-├── api.md       Full API reference (endpoints, field values, curl examples)
+│   │   ├── date-time.test.ts
+│   │   └── records.test.ts
+│   └── types.ts           Shared TypeScript interfaces
+├── api.md                 Full API reference (endpoints, field values, curl)
+├── development.md         Coding conventions and "no guessing" rule
 ├── package.json
+├── pnpm-lock.yaml
 └── tsconfig.json
 ```
 
@@ -373,11 +430,13 @@ budgetbakers/
 - `cli/index.ts` coordinates flow only.
 - `cli/options/*` owns all CLI argument parsing and validation.
 - `cli/interaction.ts` handles all interactive questions.
-- `cli/maintenance.ts` handles list/revert flows for recent records.
-- `cli/run.ts` contains run utilities and testable cache-resolution logic.
+- `cli/maintenance.ts` handles list/rollback flows (last-N window and by import batch id).
+- `cli/preview.ts` builds and prints the pre-write preview — pure formatting, no IO outside the injectable writer.
+- `cli/run.ts` contains run id, output-path derivation, and the testable cache-resolution logic.
+- `records.ts` owns CouchDB record IO, deterministic UUIDv5 `_id` derivation, and the design-doc views (`records_by_reserved_created_at_v1`, `records_by_import_batch_v1`).
 - `storage/*` owns persistence concerns (session index, per-user cache, dump and log file housekeeping).
 - `security/tokens.ts` isolates token extraction/validation utilities.
-- `auth.ts`, `couch.ts`, `records.ts`, `csv.ts`, and `date-time.ts` stay focused on external integrations and data conversion.
+- `auth.ts`, `couch.ts`, `csv.ts`, and `date-time.ts` stay focused on external integrations and data conversion.
 - `src/tests/*` mirrors source-module paths for maintainable test discovery.
 
 ---
