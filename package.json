@@ -3,6 +3,8 @@
   "version": "1.3.0",
   "description": "Direct CouchDB importer for BudgetBakers / Wallet app CSV exports",
   "type": "module",
+  "license": "MIT",
+  "author": "Jeffery Orazulike",
   "bin": {
     "budgetbakers-wallet-importer": "dist/cli/index.js"
   },
