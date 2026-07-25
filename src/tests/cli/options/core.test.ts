@@ -89,3 +89,48 @@ test("parseRunOptionsOrThrow rejects --dry-run combined with --rollback-import",
             && error.message.includes("--dry-run cannot be combined")
     );
 });
+
+test("parseRunOptionsOrThrow parses bankstract flags", () => {
+    const options = parseRunOptionsOrThrow([
+        "--from-bankstract", "statement.json",
+        "--bank", "fbn",
+        "--bank-map", "map.json",
+        "--default-category", "Uncategorised",
+    ]);
+    assert.equal(options.fromBankstract, "statement.json");
+    assert.equal(options.bankstractBank, "fbn");
+    assert.equal(options.bankMapPath, "map.json");
+    assert.equal(options.defaultCategory, "Uncategorised");
+});
+
+test("parseRunOptionsOrThrow parses --convert-only with and without a path", () => {
+    const withPath = parseRunOptionsOrThrow([
+        "--from-bankstract", "s.json", "--convert-only", "out.csv",
+    ]);
+    assert.equal(withPath.convertOnly, true);
+    assert.equal(withPath.convertOnlyPath, "out.csv");
+
+    const bare = parseRunOptionsOrThrow(["--from-bankstract", "s.json", "--convert-only"]);
+    assert.equal(bare.convertOnly, true);
+    assert.equal(bare.convertOnlyPath, null);
+
+    const beforeFlag = parseRunOptionsOrThrow(["--convert-only", "--from-bankstract", "s.json"]);
+    assert.equal(beforeFlag.convertOnly, true);
+    assert.equal(beforeFlag.convertOnlyPath, null);
+});
+
+test("parseRunOptionsOrThrow requires --from-bankstract for its sub-flags", () => {
+    assert.throws(
+        () => parseRunOptionsOrThrow(["--default-category", "Uncategorised"]),
+        (error: unknown) => error instanceof OptionsParseError
+            && error.message.includes("require --from-bankstract")
+    );
+});
+
+test("parseRunOptionsOrThrow rejects --from-bankstract combined with --csv", () => {
+    assert.throws(
+        () => parseRunOptionsOrThrow(["--from-bankstract", "s.json", "--csv", "x.csv"]),
+        (error: unknown) => error instanceof OptionsParseError
+            && error.message.includes("only one of --from-bankstract or --csv")
+    );
+});

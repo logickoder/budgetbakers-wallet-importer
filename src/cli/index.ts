@@ -11,6 +11,8 @@ import { clearAuthCookies, login } from "../auth.js";
 import { buildCouchClient, buildLookupMapsFromData, fetchLookupData } from "../couch.js";
 import type { CsvRow, SkippedRow } from "../csv.js";
 import { convertRows, parseCsv, rowsToCsv, skippedRowsToCsv } from "../csv.js";
+import { bankstractToCsvRows, loadBankMap, readBankstractInput } from "../bankstract.js";
+import type { RunOptions } from "./options/types.js";
 import { createLogger } from "../logger.js";
 import { makeImportBatchId, writeRecords } from "../records.js";
 import type { UserSession } from "../types.js";
@@ -32,11 +34,62 @@ import { parseRunOptions } from "./options/index.js";
 import { buildImportPreview, printImportPreview } from "./preview.js";
 import { makeRunId, outputPaths, resolveLookupData } from "./run.js";
 
+/**
+ * Derives the default `--convert-only` output path: `<input>.imported.csv`
+ * next to the source file.
+ */
+function defaultConvertOutPath(inputPath: string): string {
+    const dir = path.dirname(inputPath);
+    const base = path.basename(inputPath, path.extname(inputPath));
+    return path.join(dir, `${base}.imported.csv`);
+}
+
+/**
+ * Converts a bankstract export to importer-format CSV and exits. No CouchDB
+ * login or lookup is needed. This path only reshapes the file so the user can
+ * review/edit it (in Excel) before a normal `--csv` import.
+ */
+function runBankstractConvert(options: RunOptions): never {
+    const inputPath = path.resolve(options.fromBankstract as string);
+    if (!fs.existsSync(inputPath)) {
+        console.error(`File not found: ${inputPath}`);
+        process.exit(1);
+    }
+
+    const bankMap = options.bankMapPath ? loadBankMap(path.resolve(options.bankMapPath)) : {};
+    const input = readBankstractInput(inputPath, options.bankstractBank);
+    const rows = bankstractToCsvRows(input, bankMap, options.defaultCategory ?? "");
+
+    const outPath = options.convertOnlyPath
+        ? path.resolve(options.convertOnlyPath)
+        : defaultConvertOutPath(inputPath);
+    fs.writeFileSync(outPath, rowsToCsv(rows), "utf8");
+
+    const missingAccount = rows.filter((r) => !r.account).length;
+    const missingCategory = rows.filter((r) => !r.category).length;
+
+    console.log(`Converted ${rows.length} transaction(s) → ${outPath}`);
+    if (input.bank) console.log(`  Bank: ${input.bank}`);
+    if (missingAccount > 0) {
+        console.log(`  ⚠ ${missingAccount} row(s) have no account. Fill the 'account' column before importing.`);
+    }
+    if (missingCategory > 0) {
+        console.log(`  ⚠ ${missingCategory} row(s) have no category. Fill the 'category' column before importing.`);
+    }
+    console.log(`\nEdit the file, then import with:\n  budgetbakers-wallet-importer --csv "${outPath}"`);
+
+    process.exit(0);
+}
+
 async function main() {
     const options = parseRunOptions(process.argv.slice(2));
     const runId = makeRunId();
 
     console.log("\n── BudgetBakers CSV Importer ──\n");
+
+    if (options.convertOnly) {
+        runBankstractConvert(options);
+    }
 
     let sessionIndex = loadSessionIndex();
     const email = await selectEmail(sessionIndex, options.email);
@@ -62,7 +115,7 @@ async function main() {
     const savedSession = loadUserSession(email) ?? fallbackSession;
 
     if (savedSession) {
-        console.log(`Found saved session for ${email} — skipping SSO.\n`);
+        console.log(`Found saved session for ${email}. Skipping SSO.\n`);
     }
     log("Session state", {
         hasSavedToken: Boolean(savedSession),
@@ -79,7 +132,7 @@ async function main() {
         });
 
         if (savedSession) {
-            console.log("Session expired — starting fresh SSO flow.\n");
+            console.log("Session expired. Starting fresh SSO flow.\n");
             sessionIndex = removeUserSession(sessionIndex, email);
             await clearAuthCookies();
             log("Auth cookie jar cleared before fresh SSO retry");
@@ -163,25 +216,61 @@ async function main() {
         `${Object.keys(lookup.maps.currencies).length} currencies\n`
     );
 
-    console.log("Expected CSV format:");
-    console.log("  date,account,amount,category,note,payee");
-    console.log("  2026-01-27 02:31:00,First Bank,-53.75,Charges & Fees,Stamp Duty,");
-    console.log("  (account names must match exactly; category is exact except transfer aliases like TRANSFER)\n");
+    let resolved: string;
+    let rows: CsvRow[];
 
-    const csvInput = options.csvPath ?? await ask("Path to CSV file: ");
-    const resolved = path.resolve(csvInput);
-    log("CSV path resolved", { input: csvInput, resolved });
+    if (options.fromBankstract) {
+        resolved = path.resolve(options.fromBankstract);
+        log("bankstract input resolved", { input: options.fromBankstract, resolved });
+        if (!fs.existsSync(resolved)) {
+            console.error(`File not found: ${resolved}`);
+            process.exit(1);
+        }
 
-    if (!fs.existsSync(resolved)) {
-        console.error(`File not found: ${resolved}`);
-        process.exit(1);
+        console.log("\nReading bankstract export...");
+        const bankMap = options.bankMapPath ? loadBankMap(path.resolve(options.bankMapPath)) : {};
+        const input = readBankstractInput(resolved, options.bankstractBank);
+        rows = bankstractToCsvRows(input, bankMap, options.defaultCategory ?? "");
+        log("bankstract input parsed", {
+            bank: input.bank,
+            transactions: input.transactions.length,
+            mappedAccount: input.bank ? bankMap[input.bank] ?? null : null,
+            defaultCategory: options.defaultCategory,
+        });
+
+        if (input.bank && !bankMap[input.bank]) {
+            console.log(
+                `  ⚠ No account mapping for bank "${input.bank}". Those rows will fail. ` +
+                `Supply --bank-map, or use --convert-only to fill accounts manually.`
+            );
+        }
+        if (!options.defaultCategory) {
+            console.log(
+                "  ⚠ No --default-category. Every row will fail on category. " +
+                "Pass --default-category, or use --convert-only to fill categories manually."
+            );
+        }
+    } else {
+        console.log("Expected CSV format:");
+        console.log("  date,account,amount,category,note,payee");
+        console.log("  2026-01-27 02:31:00,First Bank,-53.75,Charges & Fees,Stamp Duty,");
+        console.log("  (account names must match exactly; category is exact except transfer aliases like TRANSFER)\n");
+
+        const csvInput = options.csvPath ?? await ask("Path to CSV file: ");
+        resolved = path.resolve(csvInput);
+        log("CSV path resolved", { input: csvInput, resolved });
+
+        if (!fs.existsSync(resolved)) {
+            console.error(`File not found: ${resolved}`);
+            process.exit(1);
+        }
+
+        console.log("\nParsing CSV...");
+        const raw = fs.readFileSync(resolved, "utf8");
+        rows = parseCsv(raw);
     }
 
     const { success: successPath, failure: failurePath } = outputPaths(resolved);
-
-    console.log("\nParsing CSV...");
-    const raw = fs.readFileSync(resolved, "utf8");
-    const rows = parseCsv(raw);
     const { records, originalRows, skipped } = convertRows(rows, lookup.maps);
     log("CSV parsed", {
         rows: rows.length,
@@ -221,12 +310,12 @@ async function main() {
     const batchId = options.batchId ?? makeImportBatchId();
     console.log(`\nImport batch id: ${batchId}`);
     if (options.batchId) {
-        console.log("  (reusing supplied batch id — duplicate rows will be skipped)");
+        console.log("  (reusing supplied batch id. Duplicate rows will be skipped)");
     }
     log("Import batch id", { batchId, reused: Boolean(options.batchId) });
 
     if (options.dryRun) {
-        console.log("\nDry run — no records written.");
+        console.log("\nDry run. No records written.");
         if (skipped.length > 0) {
             fs.writeFileSync(failurePath, skippedRowsToCsv(skipped), "utf8");
             console.log(`Failure CSV → ${failurePath}`);
@@ -271,7 +360,7 @@ async function main() {
         } else {
             writeFailures.push({
                 row: originalRows[i],
-                reason: `CouchDB rejected: ${result.error} — ${result.reason}`,
+                reason: `CouchDB rejected: ${result.error}. ${result.reason}`,
             });
         }
     }

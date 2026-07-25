@@ -95,6 +95,28 @@ function validateOptions(options: RunOptions): void {
     if (options.rollbackLastRequested && options.rollbackLastRecords < 1) {
         throw new OptionsParseError("--rollback-last requires a positive integer count.");
     }
+
+    const bankstractSubFlags =
+        options.bankstractBank !== null ||
+        options.bankMapPath !== null ||
+        options.defaultCategory !== null ||
+        options.convertOnly;
+    if (bankstractSubFlags && options.fromBankstract === null) {
+        throw new OptionsParseError(
+            "--bank, --bank-map, --default-category, and --convert-only require --from-bankstract."
+        );
+    }
+
+    if (options.fromBankstract !== null) {
+        if (options.csvPath !== null) {
+            throw new OptionsParseError("Use only one of --from-bankstract or --csv.");
+        }
+        if (maintenanceFlags > 0) {
+            throw new OptionsParseError(
+                "--from-bankstract cannot be combined with --list-last, --rollback-last, or --rollback-import."
+            );
+        }
+    }
 }
 
 function parseCount(value: string, flag: "--list-last" | "--rollback-last"): number {
@@ -139,6 +161,12 @@ export function parseRunOptionsOrThrow(args: string[]): RunOptions {
         rollbackImportId: null,
         batchId: null,
         dryRun: false,
+        fromBankstract: null,
+        bankstractBank: null,
+        bankMapPath: null,
+        defaultCategory: null,
+        convertOnly: false,
+        convertOnlyPath: null,
     };
 
     for (let i = 0; i < args.length; i++) {
@@ -207,6 +235,37 @@ export function parseRunOptionsOrThrow(args: string[]): RunOptions {
         } else if (arg === "--batch-id") {
             options.batchId = parseUuidArg(requireValue(args, i, "--batch-id"), "--batch-id");
             i += 1;
+        } else if (arg.startsWith("--from-bankstract=")) {
+            options.fromBankstract = getInlineValue(arg) || null;
+        } else if (arg === "--from-bankstract") {
+            options.fromBankstract = requireValue(args, i, "--from-bankstract");
+            i += 1;
+        } else if (arg.startsWith("--bank=")) {
+            options.bankstractBank = getInlineValue(arg) || null;
+        } else if (arg === "--bank") {
+            options.bankstractBank = requireValue(args, i, "--bank");
+            i += 1;
+        } else if (arg.startsWith("--bank-map=")) {
+            options.bankMapPath = getInlineValue(arg) || null;
+        } else if (arg === "--bank-map") {
+            options.bankMapPath = requireValue(args, i, "--bank-map");
+            i += 1;
+        } else if (arg.startsWith("--default-category=")) {
+            options.defaultCategory = getInlineValue(arg) || null;
+        } else if (arg === "--default-category") {
+            options.defaultCategory = requireValue(args, i, "--default-category");
+            i += 1;
+        } else if (arg.startsWith("--convert-only=")) {
+            options.convertOnly = true;
+            options.convertOnlyPath = getInlineValue(arg) || null;
+        } else if (arg === "--convert-only") {
+            options.convertOnly = true;
+            // Optional output path: consume the next arg only if it is not a flag.
+            const next = args[i + 1];
+            if (next !== undefined && !next.startsWith("-")) {
+                options.convertOnlyPath = next.trim();
+                i += 1;
+            }
         } else if (arg === "--dry-run" || arg === "--validate") {
             options.dryRun = true;
         }
