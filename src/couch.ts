@@ -47,7 +47,7 @@ export function buildCouchClient(rep: ReplicationConfig): AxiosInstance {
 }
 
 /**
- * Generic helper — fetches all CouchDB documents whose `_id` starts with
+ * Generic helper. Fetches all CouchDB documents whose `_id` starts with
  * `prefix` using `_all_docs` with startkey/endkey range query.
  */
 async function fetchDocsWithPrefix<T>(
@@ -106,15 +106,15 @@ export async function fetchLookupData(couch: AxiosInstance): Promise<LookupData>
  * Fetches accounts, categories, and currencies in parallel and returns
  * runtime lookup maps.
  *
- * - `accounts`   — account name → full `-Account_<uuid>`
- * - `accountCurrencies` — account name → full `-Currency_<uuid>` (derived
+ * - `accounts`:   account name → full `-Account_<uuid>`
+ * - `accountCurrencies`: account name → full `-Currency_<uuid>` (derived
  *                  from the account's own `currencyId` field, so the user
  *                  never needs to specify currency in the CSV)
- * - `categories` — category name → full `-Category_<uuid>` (names match
- *                  CouchDB exactly — user types what they see in the app)
- * - `currencies` — ISO 4217 code → full `-Currency_<uuid>` (kept for
+ * - `categories`: category name → full `-Category_<uuid>` (names match
+ *                  CouchDB exactly, user types what they see in the app)
+ * - `currencies`: ISO 4217 code → full `-Currency_<uuid>` (kept for
  *                  reference / edge cases)
- * - `transferCategoryId` — the `-Category_<uuid>` for "Transfer, withdraw",
+ * - `transferCategoryId`: the `-Category_<uuid>` for "Transfer, withdraw",
  *                  used by csv.ts to detect transfer rows without relying on
  *                  a hardcoded id
  *
@@ -146,7 +146,7 @@ export function buildLookupMapsFromData(data: LookupData): LookupMaps {
     categoryMap[c.name] = c._id; // full "-Category_<uuid>"
   }
 
-  // The transfer category is looked up by name at runtime — no hardcoding.
+  // The transfer category is looked up by name at runtime. No hardcoding.
   const transferCategoryId = categoryMap["Transfer, withdraw"] ?? null;
 
   return {

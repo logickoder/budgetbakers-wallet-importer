@@ -10,7 +10,7 @@ export function normalizeEmail(value: string): string {
     return value.trim().toLowerCase();
 }
 
-// Accepts standard `local@domain.tld` shape. Intentionally simple — the SSO
+// Accepts standard `local@domain.tld` shape. Intentionally simple. The SSO
 // endpoint is the source of truth for what addresses actually exist; this just
 // rejects obviously bad input (whitespace, missing `@`, missing dotted domain)
 // so we don't fire a doomed network request from a typo at the prompt.

@@ -30,11 +30,12 @@ export function makeRunId(): string {
  */
 export function outputPaths(inputPath: string): { success: string; failure: string } {
     const dir = path.dirname(inputPath);
-    const ext = path.extname(inputPath);
-    const base = path.basename(inputPath, ext);
+    const base = path.basename(inputPath, path.extname(inputPath));
+    // Reports are always CSV, regardless of the input's extension (a bankstract
+    // source may be .json), so the report files are always .csv.
     return {
-        success: path.join(dir, `${base}_success${ext}`),
-        failure: path.join(dir, `${base}_failure${ext}`),
+        success: path.join(dir, `${base}_success.csv`),
+        failure: path.join(dir, `${base}_failure.csv`),
     };
 }
 

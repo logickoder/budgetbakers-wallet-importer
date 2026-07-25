@@ -41,7 +41,7 @@ interface UserData {
   [key: string]: unknown;
 }
 
-/** Shared cookie jar — persists Next-Auth session cookie across requests. */
+/** Shared cookie jar. Persists Next-Auth session cookie across requests. */
 export const jar = new CookieJar();
 
 function safeDecodeUriComponent(value: string): string {
@@ -67,7 +67,7 @@ export async function clearAuthCookies(): Promise<void> {
 /**
  * Builds the shared Axios client with cookie-jar support and browser-shaped
  * defaults. Kong's WAF + Next-Auth's CSRF middleware both inspect these
- * headers on `/api/auth/*` requests — defaults are applied once at module
+ * headers on `/api/auth/*` requests. Defaults are applied once at module
  * init so every call site inherits them.
  */
 function createWebClient() {
@@ -161,7 +161,7 @@ async function exchangeForSessionToken(
   const cookies = await jar.getCookies(WEB_ORIGIN);
   const rawCallbackCookie = cookies.find((c) => c.key.includes("callback-url"))?.value;
   // tough-cookie returns the stored (URL-encoded) value. qs.stringify will
-  // URL-encode again, so decode here to avoid double-encoding — Next-Auth's
+  // URL-encode again, so decode here to avoid double-encoding. Next-Auth's
   // callback compares the decoded value and 403s on a mismatch.
   const callbackUrl = rawCallbackCookie
     ? safeDecodeUriComponent(rawCallbackCookie)
@@ -173,7 +173,7 @@ async function exchangeForSessionToken(
     {
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
-        // Next-Auth v4 XHR signal — without it the callback returns 302s that
+        // Next-Auth v4 XHR signal. Without it the callback returns 302s that
         // Kong's CSRF plugin treats as non-XHR writes and rejects with 403.
         "X-Auth-Return-Redirect": "1",
         // Mirror the CSRF token as a header alongside the cookie-bound copy.
@@ -203,7 +203,7 @@ async function exchangeForSessionToken(
  * Fetches the user profile which contains both the userId and the CouchDB
  * replication credentials (`replication.login` + `replication.token`).
  *
- * This is the single source of truth for CouchDB auth — no separate call needed.
+ * This is the single source of truth for CouchDB auth. No separate call needed.
  */
 export async function fetchUserData(): Promise<UserData> {
   const input = encodeURIComponent(
@@ -223,7 +223,7 @@ export async function fetchUserData(): Promise<UserData> {
  *
  * Two modes:
  * - **Session reuse**: pass a previously saved `sessionToken` to skip SSO entirely.
- * - **Full SSO**: omit `sessionToken` — triggers login email and prompts stdin.
+ * - **Full SSO**: omit `sessionToken`. Triggers login email and prompts stdin.
  *
  * Always persist the returned `sessionToken` for subsequent runs.
  *

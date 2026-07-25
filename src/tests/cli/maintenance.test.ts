@@ -45,6 +45,12 @@ function baseRunOptions(overrides: Partial<RunOptions> = {}): RunOptions {
         rollbackImportId: null,
         batchId: null,
         dryRun: false,
+        fromBankstract: null,
+        bankstractBank: null,
+        bankMapPath: null,
+        defaultCategory: null,
+        convertOnly: false,
+        convertOnlyPath: null,
         ...overrides,
     };
 }
