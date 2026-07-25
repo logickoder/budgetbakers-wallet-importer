@@ -94,7 +94,7 @@ async function confirmAndDeleteRecords(params: {
     if (failed.length > 0) {
         console.log(`✗ Failed to delete ${failed.length} record(s)`);
         for (const entry of failed) {
-            console.log(`  - ${entry.id}: ${entry.error} — ${entry.reason}`);
+            console.log(`  - ${entry.id}: ${entry.error}. ${entry.reason}`);
         }
         return 1;
     }

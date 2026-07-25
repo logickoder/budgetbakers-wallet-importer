@@ -15,7 +15,7 @@
  * ### Columns
  * | Column     | Required | Notes                                              |
  * |------------|----------|----------------------------------------------------|
- * | `date`     | yes      | `YYYY-MM-DD HH:MM:SS` — interpreted as local time  |
+ * | `date`     | yes      | `YYYY-MM-DD HH:MM:SS`, interpreted as local time  |
  * | `account`  | yes      | Exact account name as it appears in the app        |
  * | `amount`   | yes      | Signed float. Negative = expense, positive = income|
  * | `category` | yes      | Exact app category name, except transfer aliases   |
@@ -23,11 +23,11 @@
  * | `payee`    | no       | Stored as a separate field, not embedded in note   |
  *
  * ### What you don't need to specify
- * - **Currency** — derived from the account's own currency at runtime
- * - **Transfer flag** — detected when category is "Transfer, withdraw" (or
+ * - **Currency**: derived from the account's own currency at runtime
+ * - **Transfer flag**: detected when category is "Transfer, withdraw" (or
  *   whatever the user named it) AND both rows share the same timestamp
- * - **Payment type** — derived from category: transfer rows → 3, others → 0
- * - **Type (income/expense)** — derived from the sign of `amount`
+ * - **Payment type**: derived from category: transfer rows → 3, others → 0
+ * - **Type (income/expense)**: derived from the sign of `amount`
  *
  * ### Transfer pair rules
  * Two rows form a transfer pair when ALL of:
@@ -138,12 +138,12 @@ export function skippedRowsToCsv(skipped: SkippedRow[]): string {
  * Converts parsed CSV rows to `NewRecord` objects using runtime lookup maps.
  *
  * Resolution logic:
- * - `accountId`   — maps.accounts[row.account]         (full -Account_ id)
- * - `currencyId`  — maps.accountCurrencies[row.account] (no CSV column needed)
- * - `categoryId`  — maps.categories[row.category]      (full -Category_ id)
- * - `type`        — sign of amount: negative → EXPENSE, positive → INCOME
- * - `paymentType` — transfer rows → TRANSFER (3), everything else → CASH (0)
- * - `transfer`    — true when categoryId === maps.transferCategoryId
+ * - `accountId`:  maps.accounts[row.account]         (full -Account_ id)
+ * - `currencyId`:  maps.accountCurrencies[row.account] (no CSV column needed)
+ * - `categoryId`:  maps.categories[row.category]      (full -Category_ id)
+ * - `type`:        sign of amount: negative → EXPENSE, positive → INCOME
+ * - `paymentType`: transfer rows → TRANSFER (3), everything else → CASH (0)
+ * - `transfer`:    true when categoryId === maps.transferCategoryId
  *
  * Transfer pair linking:
  * - Pairs identified by: same category (transfer) + same date string
@@ -151,7 +151,7 @@ export function skippedRowsToCsv(skipped: SkippedRow[]): string {
  * - Each pair gets a shared `transferId` UUID; each leg gets the other's
  *   accountId in `transferAccountId`
  *
- * The returned `originalRows` array is parallel to `records` — index i in
+ * The returned `originalRows` array is parallel to `records`. Index i in
  * `originalRows` is the source CSV row for `records[i]`. This allows cli.ts
  * to write success/failure output CSVs after the CouchDB write completes.
  */
@@ -186,7 +186,7 @@ export function convertRows(rows: CsvRow[], maps: LookupMaps): ParseResult {
       continue;
     }
     if (!categoryId) {
-      skipped.push({ row, reason: `Unknown category: "${row.category}" — check app for exact name` });
+      skipped.push({ row, reason: `Unknown category: "${row.category}". Check app for exact name` });
       continue;
     }
 
@@ -206,7 +206,7 @@ export function convertRows(rows: CsvRow[], maps: LookupMaps): ParseResult {
     } catch {
       skipped.push({
         row,
-        reason: `Invalid date: "${row.date}" — expected a parseable local date/time`,
+        reason: `Invalid date: "${row.date}". Expected a parseable local date/time`,
       });
       continue;
     }
@@ -261,7 +261,7 @@ export function convertRows(rows: CsvRow[], maps: LookupMaps): ParseResult {
     const orphanRow = originalRows[idx];
     skipped.push({
       row: orphanRow,
-      reason: `Transfer row at "${orphanRow.date}" has no matching pair — both legs must have the same date`,
+      reason: `Transfer row at "${orphanRow.date}" has no matching pair. Both legs must have the same date`,
     });
     records.splice(idx, 1);
     originalRows.splice(idx, 1);

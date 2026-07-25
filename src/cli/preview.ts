@@ -1,7 +1,7 @@
 /**
  * @file cli/preview.ts
  * @description Builds and prints the pre-write preview block (per-account
- * totals + first-5 sample). Pure formatting — no IO outside the injectable
+ * totals + first-5 sample). Pure formatting. No IO outside the injectable
  * `out` writer.
  */
 
@@ -81,7 +81,7 @@ function formatMinorAmount(minor: number): string {
 }
 
 /**
- * Prints the preview block. Pure formatting — kept here for testability via
+ * Prints the preview block. Pure formatting. Kept here for testability via
  * an injectable `out` writer.
  */
 export function printImportPreview(

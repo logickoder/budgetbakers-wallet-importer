@@ -1,7 +1,7 @@
 /**
  * @file types.ts
  * @description Shared TypeScript interfaces derived entirely from real CouchDB
- * documents. No fields are assumed — every field and value is confirmed.
+ * documents. No fields are assumed. Every field and value is confirmed.
  */
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -28,7 +28,7 @@ export interface AccountDoc {
   _id: string;  // "-Account_<uuid>"
   _rev: string;
   name: string;  // matches CSV `account` column exactly
-  currencyId: string;  // "-Currency_<uuid>" — used to derive currency per account
+  currencyId: string;  // "-Currency_<uuid>", used to derive currency per account
   position: number;
   archived: boolean;
   [key: string]: unknown;
@@ -53,7 +53,7 @@ export interface CurrencyDoc {
 
 /**
  * Confirmed shape of a `Record` document in CouchDB.
- * Every field is confirmed from real documents — nothing guessed.
+ * Every field is confirmed from real documents. Nothing guessed.
  *
  * Key findings:
  * - `type`:              0 = income, 1 = expense (both confirmed)
@@ -77,16 +77,16 @@ export interface WalletRecord {
   amount: number;    // positive integer, minor units ×100
   refAmount: number;    // always same as amount
   note: string;
-  payee?: string;    // separate field — not embedded in note
+  payee?: string;    // separate field, not embedded in note
   recordDate: string;    // ISO-8601 e.g. "2026-01-27T02:31:00.000Z"
   recordState: 1;         // always 1
   paymentType: number;    // 0=cash, 3=electronic transfer
   transfer: boolean;
   transferId?: string;    // shared UUID linking both legs of a transfer
-  transferAccountId?: string;    // OTHER account "-Account_<uuid>" — only on transfers
+  transferAccountId?: string;    // OTHER account "-Account_<uuid>", only on transfers
   // Tool-only field: groups records written together in one importer run so
   // they can be located later for batch rollback. Never read or written by
-  // the BudgetBakers app — it ignores unknown CouchDB fields.
+  // the BudgetBakers app. It ignores unknown CouchDB fields.
   importBatchId?: string;
   categoryChanged: boolean;   // always true on real records
   latitude: number;    // always 0.0
@@ -106,7 +106,7 @@ export interface WalletRecord {
   [key: string]: unknown;
 }
 
-/** Input for `writeRecords()` — computed fields are omitted. */
+/** Input for `writeRecords()`. Computed fields are omitted. */
 export interface NewRecord {
   accountId: string;   // "-Account_<uuid>"
   currencyId: string;   // "-Currency_<uuid>"
@@ -158,14 +158,14 @@ export interface LookupMaps {
   accountCurrencies: Record<string, string>;
   /**
    * Category name → full "-Category_<uuid>".
-   * Keys match CouchDB `name` exactly — the user types what they see in the app.
+   * Keys match CouchDB `name` exactly. The user types what they see in the app.
    */
   categories: Record<string, string>;
   /** ISO 4217 code → full "-Currency_<uuid>" (kept for reference / edge cases) */
   currencies: Record<string, string>;
   /**
    * The full `-Category_<uuid>` for "Transfer, withdraw".
-   * Fetched at runtime — never hardcoded. Used by csv.ts to identify transfer
+   * Fetched at runtime, never hardcoded. Used by csv.ts to identify transfer
    * rows by category, not by a magic string.
    * `null` only if the category is somehow absent from the user's account.
    */

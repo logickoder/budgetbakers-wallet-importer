@@ -4,7 +4,7 @@
  *
  * ## Why direct writes instead of the import pipeline?
  * The file-upload pipeline (`importRecords` tRPC endpoint) has two hard limits:
- *   - `dateFormatterPattern: "yyyy-MM-dd"` — time is always stripped
+ *   - `dateFormatterPattern: "yyyy-MM-dd"`. Time is always stripped
  *   - One account per upload file
  *
  * Writing directly with `_bulk_docs` preserves full timestamp precision and
@@ -111,7 +111,7 @@ const REQUIRED_VIEWS: Record<string, string> = {
   [RECORDS_BY_IMPORT_BATCH_VIEW]: RECORDS_BY_IMPORT_BATCH_MAP,
 };
 
-/** Record `type` values — both confirmed from real documents. */
+/** Record `type` values. Both confirmed from real documents. */
 export const RECORD_TYPE = {
   INCOME: 0 as const,
   EXPENSE: 1 as const,
@@ -174,7 +174,7 @@ function isDuplicateResult(result: BulkResult): boolean {
  * Each record's `_id` is derived from `batchId` + row identity (see
  * `deriveRecordId`). Re-running the same input under the same batch produces
  * the same `_id`s, so CouchDB returns 409 `conflict` for already-written rows
- * — those are surfaced as "duplicate" in the result, not thrown.
+ * Those are surfaced as "duplicate" in the result, not thrown.
  *
  * @throws {Error} When CouchDB rejects a record with a non-conflict error.
  */
@@ -240,7 +240,7 @@ export async function writeRecords(
   if (hardFailures.length) {
     throw new Error(
       `${hardFailures.length} record(s) rejected by CouchDB:\n` +
-      hardFailures.map((r) => `  ${r.id}: ${r.error} — ${r.reason}`).join("\n")
+      hardFailures.map((r) => `  ${r.id}: ${r.error}. ${r.reason}`).join("\n")
     );
   }
 
