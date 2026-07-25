@@ -78,7 +78,7 @@ export const CSV_HEADER = ["date", "account", "amount", "category", "note", "pay
  * Transfer rows are a special case: we accept common aliases and map them
  * to the runtime "Transfer, withdraw" category id when available.
  */
-function isTransferCategoryAlias(category: string): boolean {
+export function isTransferCategoryAlias(category: string): boolean {
   const normalized = category
     .trim()
     .toLowerCase()
@@ -92,13 +92,21 @@ function isTransferCategoryAlias(category: string): boolean {
  * Parses the custom importer CSV string into raw row objects.
  * Strips the UTF-8 BOM and skips blank lines.
  */
-export function parseCsv(content: string): CsvRow[] {
+/**
+ * Low-level CSV parse shared by the importer and the bankstract adapter.
+ * Strips the UTF-8 BOM, uses the header row as keys, and tolerates ragged rows.
+ */
+export function parseCsvRecords(content: string): Record<string, string>[] {
   return parse(content.replace(/^\uFEFF/, ""), {
     columns: true,
     skip_empty_lines: true,
     trim: true,
     relax_column_count: true,
-  }) as CsvRow[];
+  }) as Record<string, string>[];
+}
+
+export function parseCsv(content: string): CsvRow[] {
+  return parseCsvRecords(content) as unknown as CsvRow[];
 }
 
 /**
@@ -164,7 +172,14 @@ export function convertRows(rows: CsvRow[], maps: LookupMaps): ParseResult {
   const pendingTransfers = new Map<string, number>();
 
   for (const row of rows) {
-    if (!row.date?.trim() || !row.account?.trim()) continue;
+    // Skip fully-empty lines only. A row that carries data but is missing its
+    // account (or date) must fail loudly below, never be silently dropped.
+    if (!row.date?.trim() && !row.account?.trim()) continue;
+
+    if (!row.account?.trim()) {
+      skipped.push({ row, reason: "Missing account" });
+      continue;
+    }
 
     // ── Resolve CouchDB ids ─────────────────────────────────────────────────
     const accountId = maps.accounts[row.account];

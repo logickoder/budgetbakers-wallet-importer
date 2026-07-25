@@ -10,8 +10,9 @@ import path from "path";
 import { clearAuthCookies, login } from "../auth.js";
 import { buildCouchClient, buildLookupMapsFromData, fetchLookupData } from "../couch.js";
 import type { CsvRow, SkippedRow } from "../csv.js";
-import { convertRows, parseCsv, rowsToCsv, skippedRowsToCsv } from "../csv.js";
+import { convertRows, isTransferCategoryAlias, parseCsv, rowsToCsv, skippedRowsToCsv } from "../csv.js";
 import { bankstractToCsvRows, loadBankMap, readBankstractInput } from "../bankstract.js";
+import type { LookupMaps } from "../types.js";
 import type { RunOptions } from "./options/types.js";
 import { createLogger } from "../logger.js";
 import { makeImportBatchId, writeRecords } from "../records.js";
@@ -45,6 +46,56 @@ function defaultConvertOutPath(inputPath: string): string {
 }
 
 /**
+ * Loads a bankstract export (JSON/CSV) and maps it to importer rows. Shared by
+ * the convert-only and direct-import paths so the two never drift.
+ */
+function loadBankstractRows(options: RunOptions, resolvedPath: string): { rows: CsvRow[]; bank: string | null } {
+    const bankMap = options.bankMapPath ? loadBankMap(path.resolve(options.bankMapPath)) : {};
+    const input = readBankstractInput(resolvedPath, options.bankstractBank);
+    const rows = bankstractToCsvRows(input, bankMap, options.defaultCategory ?? "");
+    return { rows, bank: input.bank };
+}
+
+/**
+ * Warns about bankstract rows that will fail on a blank account or category.
+ * Applies to both paths: in convert-only the user fills the column, in direct
+ * import the row lands in the failure CSV.
+ */
+function warnBankstractGaps(rows: CsvRow[]): void {
+    let missingAccount = 0;
+    let missingCategory = 0;
+    for (const r of rows) {
+        if (!r.account.trim()) missingAccount++;
+        if (!r.category.trim()) missingCategory++;
+    }
+    if (missingAccount > 0) {
+        console.log(`  ⚠ ${missingAccount} row(s) have no account. Set --bank-map, or fill the 'account' column before importing.`);
+    }
+    if (missingCategory > 0) {
+        console.log(`  ⚠ ${missingCategory} row(s) have no category. Set --default-category, or fill the 'category' column before importing.`);
+    }
+}
+
+/**
+ * Warns when the bankstract `--default-category` resolves to the transfer
+ * category. convertRows would then treat every row as a transfer leg and pair
+ * rows that share a timestamp, corrupting the import.
+ */
+function warnTransferDefaultCategory(defaultCategory: string | null, maps: LookupMaps): void {
+    const category = defaultCategory?.trim();
+    if (!category) return;
+    const resolvesToTransfer =
+        (maps.transferCategoryId !== null && maps.categories[category] === maps.transferCategoryId) ||
+        isTransferCategoryAlias(category);
+    if (resolvesToTransfer) {
+        console.log(
+            `  ⚠ --default-category "${category}" is the transfer category. Rows sharing a timestamp will be ` +
+            "mis-linked as transfers. Use a non-transfer default, or --convert-only to categorise per row."
+        );
+    }
+}
+
+/**
  * Converts a bankstract export to importer-format CSV and exits. No CouchDB
  * login or lookup is needed. This path only reshapes the file so the user can
  * review/edit it (in Excel) before a normal `--csv` import.
@@ -56,26 +107,16 @@ function runBankstractConvert(options: RunOptions): never {
         process.exit(1);
     }
 
-    const bankMap = options.bankMapPath ? loadBankMap(path.resolve(options.bankMapPath)) : {};
-    const input = readBankstractInput(inputPath, options.bankstractBank);
-    const rows = bankstractToCsvRows(input, bankMap, options.defaultCategory ?? "");
+    const { rows, bank } = loadBankstractRows(options, inputPath);
 
     const outPath = options.convertOnlyPath
         ? path.resolve(options.convertOnlyPath)
         : defaultConvertOutPath(inputPath);
     fs.writeFileSync(outPath, rowsToCsv(rows), "utf8");
 
-    const missingAccount = rows.filter((r) => !r.account).length;
-    const missingCategory = rows.filter((r) => !r.category).length;
-
     console.log(`Converted ${rows.length} transaction(s) → ${outPath}`);
-    if (input.bank) console.log(`  Bank: ${input.bank}`);
-    if (missingAccount > 0) {
-        console.log(`  ⚠ ${missingAccount} row(s) have no account. Fill the 'account' column before importing.`);
-    }
-    if (missingCategory > 0) {
-        console.log(`  ⚠ ${missingCategory} row(s) have no category. Fill the 'category' column before importing.`);
-    }
+    if (bank) console.log(`  Bank: ${bank}`);
+    warnBankstractGaps(rows);
     console.log(`\nEdit the file, then import with:\n  budgetbakers-wallet-importer --csv "${outPath}"`);
 
     process.exit(0);
@@ -228,28 +269,12 @@ async function main() {
         }
 
         console.log("\nReading bankstract export...");
-        const bankMap = options.bankMapPath ? loadBankMap(path.resolve(options.bankMapPath)) : {};
-        const input = readBankstractInput(resolved, options.bankstractBank);
-        rows = bankstractToCsvRows(input, bankMap, options.defaultCategory ?? "");
-        log("bankstract input parsed", {
-            bank: input.bank,
-            transactions: input.transactions.length,
-            mappedAccount: input.bank ? bankMap[input.bank] ?? null : null,
-            defaultCategory: options.defaultCategory,
-        });
+        const loaded = loadBankstractRows(options, resolved);
+        rows = loaded.rows;
+        log("bankstract input parsed", { bank: loaded.bank, transactions: rows.length });
 
-        if (input.bank && !bankMap[input.bank]) {
-            console.log(
-                `  ⚠ No account mapping for bank "${input.bank}". Those rows will fail. ` +
-                `Supply --bank-map, or use --convert-only to fill accounts manually.`
-            );
-        }
-        if (!options.defaultCategory) {
-            console.log(
-                "  ⚠ No --default-category. Every row will fail on category. " +
-                "Pass --default-category, or use --convert-only to fill categories manually."
-            );
-        }
+        warnBankstractGaps(rows);
+        warnTransferDefaultCategory(options.defaultCategory, lookup.maps);
     } else {
         console.log("Expected CSV format:");
         console.log("  date,account,amount,category,note,payee");

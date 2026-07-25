@@ -36,7 +36,8 @@
  */
 
 import fs from "fs";
-import { parse } from "csv-parse/sync";
+
+import { parseCsvRecords } from "./csv.js";
 import type { CsvRow } from "./csv.js";
 
 /** A single bankstract transaction (JSON `transactions[]` entry or CSV row). */
@@ -107,12 +108,7 @@ export function readBankstractInput(filePath: string, bankOverride: string | nul
 
 /** Parses bankstract's CSV export into transactions. */
 function parseBankstractCsv(content: string): BankstractTransaction[] {
-    const rows = parse(content.replace(/^\uFEFF/, ""), {
-        columns: true,
-        skip_empty_lines: true,
-        trim: true,
-        relax_column_count: true,
-    }) as Record<string, string>[];
+    const rows = parseCsvRecords(content);
 
     return rows.map((r) => ({
         date: r.date ?? "",
@@ -185,19 +181,27 @@ export function loadBankMap(filePath: string): BankMap {
  * back to a decimal string the importer's `parseFloat` reads (e.g. "-53.75").
  */
 function signedAmount(tx: BankstractTransaction): string {
-    const minor = toMinorUnits(tx.credit) - toMinorUnits(tx.debit);
-    return String(minor / 100);
+    const credit = toMinorUnits(tx.credit);
+    const debit = toMinorUnits(tx.debit);
+    if (credit === null || debit === null) {
+        // Keep the offending raw values and make the cell non-numeric, so
+        // convertRows routes just this one row to the failure CSV instead of
+        // the whole run aborting on a single bad amount.
+        return `invalid (credit="${(tx.credit ?? "").trim()}" debit="${(tx.debit ?? "").trim()}")`;
+    }
+    return String((credit - debit) / 100);
 }
 
-/** Parses a decimal string to integer minor units (cents). Blank → 0. */
-function toMinorUnits(value: string | null | undefined): number {
+/**
+ * Parses a strict decimal string to integer minor units (cents). Blank is 0.
+ * Returns null for anything non-numeric (comma-grouped, "N/A", currency signs)
+ * so the caller can flag the row rather than crash the import.
+ */
+function toMinorUnits(value: string | null | undefined): number | null {
     const text = (value ?? "").trim();
     if (text === "") return 0;
-    const parsed = Number(text);
-    if (!Number.isFinite(parsed)) {
-        throw new Error(`Invalid numeric value in bankstract row: "${value}"`);
-    }
-    return Math.round(parsed * 100);
+    if (!/^[+-]?\d+(\.\d+)?$/.test(text)) return null;
+    return Math.round(Number(text) * 100);
 }
 
 /** Builds the note from narration, folding in the reference when present. */

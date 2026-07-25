@@ -91,6 +91,22 @@ test("bankstractToCsvRows signs amount as credit minus debit", () => {
     assert.equal(rows[2].amount, "-10");
 });
 
+test("bankstractToCsvRows flags an unparseable amount instead of throwing", () => {
+    const input: BankstractInput = {
+        bank: "fbn",
+        transactions: [
+            { date: "d1", narration: "n", debit: "N/A", credit: "0" },
+            { date: "d2", narration: "n", debit: "0", credit: "300,000" },
+        ],
+    };
+    const rows = bankstractToCsvRows(input, {}, "");
+    // Non-numeric so convertRows' parseFloat rejects them into the failure CSV.
+    assert.ok(Number.isNaN(parseFloat(rows[0].amount)));
+    assert.ok(Number.isNaN(parseFloat(rows[1].amount)));
+    assert.match(rows[0].amount, /N\/A/);
+    assert.match(rows[1].amount, /300,000/);
+});
+
 test("bankstractToCsvRows resolves account from bank map, blank when unmapped", () => {
     const input: BankstractInput = {
         bank: "fbn",
