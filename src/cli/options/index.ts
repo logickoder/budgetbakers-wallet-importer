@@ -10,7 +10,7 @@ function printHelp(): void {
     console.log("  --email <email>        Use this email (skip email selection prompt)");
     console.log("  --csv <path>           Use this CSV path (skip CSV path prompt)");
     console.log("  --from-bankstract <path> Import a bankstract export (JSON or CSV) instead of a CSV");
-    console.log("  --bank <id>            Bank id for bankstract input (fbn|opay|palmpay|zenith; required for CSV)");
+    console.log("  --bank <id>            Bank id for bankstract CSV input (fbn|opay|palmpay|zenith; sets the account via --bank-map)");
     console.log("  --bank-map <path>      JSON map of bank id → app account name, e.g. {\"fbn\":\"First Bank\"}");
     console.log("  --default-category <name> Category applied to every bankstract row");
     console.log("  --convert-only [out.csv] Convert bankstract input to importer CSV and exit (edit before import)");

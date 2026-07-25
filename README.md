@@ -406,4 +406,3 @@ Full endpoint shapes, field values, and curl examples are in [api.md](api.md).
 - CouchDB only. This writes directly to the database. If BudgetBakers changes their infrastructure, the tool needs updating.
 - Duplicate detection is batch-scoped. Re-running the same CSV under the same `--batch-id` is safe. Re-running without one generates a new batch id and creates duplicates by design, so intentional re-imports work.
 - No edit flow. Record updates are not supported. Rollback is delete-only, by recent-record window or by import batch id.
-```

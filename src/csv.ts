@@ -172,9 +172,17 @@ export function convertRows(rows: CsvRow[], maps: LookupMaps): ParseResult {
   const pendingTransfers = new Map<string, number>();
 
   for (const row of rows) {
-    // Skip fully-empty lines only. A row that carries data but is missing its
-    // account (or date) must fail loudly below, never be silently dropped.
-    if (!row.date?.trim() && !row.account?.trim()) continue;
+    // Skip only genuinely blank lines (every column empty, e.g. a trailing
+    // ",,,,," row). A row that carries any data but is missing its account
+    // must fail loudly below, never be silently dropped.
+    const isBlankLine =
+      !row.date?.trim() &&
+      !row.account?.trim() &&
+      !row.amount?.trim() &&
+      !row.category?.trim() &&
+      !row.note?.trim() &&
+      !row.payee?.trim();
+    if (isBlankLine) continue;
 
     if (!row.account?.trim()) {
       skipped.push({ row, reason: "Missing account" });

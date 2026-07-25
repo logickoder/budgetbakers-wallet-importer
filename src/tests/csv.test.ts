@@ -30,7 +30,14 @@ test("convertRows routes a blank-account row to skipped, not silent drop", () =>
 });
 
 test("convertRows skips a fully-empty line without recording a failure", () => {
-    const result = convertRows([row({ date: "", account: "", amount: "", category: "" })], MAPS);
+    const result = convertRows([row({ date: "", account: "", amount: "", category: "", note: "", payee: "" })], MAPS);
     assert.equal(result.records.length, 0);
     assert.equal(result.skipped.length, 0);
+});
+
+test("convertRows fails a data row missing only date+account (not a blank line)", () => {
+    const result = convertRows([row({ date: "", account: "", amount: "-10", category: "Groceries" })], MAPS);
+    assert.equal(result.records.length, 0);
+    assert.equal(result.skipped.length, 1);
+    assert.match(result.skipped[0].reason, /account/i);
 });
